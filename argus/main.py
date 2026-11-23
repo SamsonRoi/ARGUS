@@ -1,12 +1,14 @@
 import os
 from argus.banner import show_banner
 from argus.menus import main_menu
+from rich.console import Console
 
+console= Console()
 
 def main():
-    os.system("cls" if os.name == "nt" else "clear")
+    console.clear()
 
-    show_banner()
+    show_banner(clear=False)
     main_menu()
 
 
