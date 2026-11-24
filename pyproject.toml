@@ -18,3 +18,9 @@ argus = "argus.main:main"
 
 [tool.setuptools.packages.find]
 include = ["argus*"]
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]

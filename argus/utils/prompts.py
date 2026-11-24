@@ -9,26 +9,28 @@ def handle_exit():
     raise SystemExit(0)
 
 
+
 def get_menu_choice(prompt, valid_choices):
     while True:
         try:
             choice = console.input(
                 f"\n[bold cyan]{prompt}[/bold cyan] "
-            )
+            ).strip()
 
-            if not choice.strip():
+            if not choice:
                 console.print(
                     "[bold red]No input detected. Try again.[/bold red]"
                 )
                 continue
 
-            if not choice.strip().isdigit():
+            try:
+                choice = int(choice)
+
+            except ValueError:
                 console.print(
-                    "[bold red]Invalid input. Enter a number.[/bold red]"
+                    "[bold red]Invalid input. Enter a valid number.[/bold red]"
                 )
                 continue
-
-            choice = int(choice.strip())
 
             if choice not in valid_choices:
                 console.print(
@@ -40,6 +42,7 @@ def get_menu_choice(prompt, valid_choices):
 
         except (KeyboardInterrupt, EOFError):
             handle_exit()
+
 
 
 def get_text_input(prompt):

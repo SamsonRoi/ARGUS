@@ -5,6 +5,8 @@ from argus.utils.prompts import (
 )
 
 from argus.utils.session import Session
+from argus.utils.target_parser import parse_targets
+from argus.utils.validators import get_scope_warnings
 
 current_session = Session()
 
@@ -32,13 +34,46 @@ def collect_target(target_type, prompt):
     print("\nTARGET CONFIGURATION")
     print(f"Selected target type: {target_type}")
 
-    target = get_text_input(prompt)
+    # Keep asking until all entered targets are valid.
+    while True:
+        raw_target = get_text_input(prompt)
 
+        valid_targets, invalid_targets = parse_targets(
+            target_type,
+            raw_target
+        )
+
+        if invalid_targets:
+            print("\nINVALID TARGETS DETECTED")
+
+            for error in invalid_targets:
+                print(f"- {error}")
+
+            print("\nPlease correct the input and try again.")
+            continue
+
+        break
+
+    # Check each valid target for scope warnings.
+    warnings_found = False
+
+    for target in valid_targets:
+        warnings = get_scope_warnings(target)
+
+        for warning in warnings:
+            warnings_found = True
+            print(f"\n[WARNING] {target}: {warning}")
+
+    if warnings_found:
+        print("\nThese warnings do not confirm authorization.")
+        print("Only use targets you own or have permission to assess.")
+
+    # Ask before replacing an existing session.
     if current_session.is_active:
         print("\nEXISTING TARGET DETECTED")
         print("-" * 35)
-        print(f"Current Target: {current_session.target}")
-        print(f"New Target:     {target}")
+        print(f"Current Target: {', '.join(current_session.target)}")
+        print(f"New Target:     {', '.join(valid_targets)}")
 
         while True:
             confirmation = get_text_input(
@@ -56,13 +91,14 @@ def collect_target(target_type, prompt):
             else:
                 print("\nInvalid response. Enter y or n.")
 
-    current_session.set_target(target_type, target)
+    # Store only validated targets.
+    current_session.set_target(target_type, valid_targets)
 
     print("\nTarget successfully stored in session.")
     print(f"Target Type: {current_session.target_type}")
-    print(f"Target: {current_session.target}")
+    print(f"Targets: {', '.join(current_session.target)}")
 
-    return target
+    return valid_targets
 
 
 
@@ -141,7 +177,7 @@ def current_session_menu():
         if current_session.is_active:
             print("Status: Active")
             print(f"Target Type: {current_session.target_type}")
-            print(f"Target: {current_session.target}")
+            print(f"Targets: {', '.join(current_session.target)}")
             print(
                 "Started:",
                 current_session.started_at.strftime(
