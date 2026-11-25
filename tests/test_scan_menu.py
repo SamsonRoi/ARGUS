@@ -113,7 +113,7 @@ def test_custom_ports_ask_again_until_valid(monkeypatch, capsys):
 # ---------- choosing optional TCP extras ----------
 
 def test_all_extras_chosen(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [True, True, True])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [True, True, True, True])
 
     options = ask_scan_options(("standard", None))
 
@@ -124,7 +124,7 @@ def test_all_extras_chosen(monkeypatch):
 
 
 def test_no_extras_chosen(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, True])
 
     options = ask_scan_options(("full", None))
 
@@ -137,12 +137,41 @@ def test_no_extras_chosen(monkeypatch):
 
 
 def test_custom_ports_are_preserved(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, True])
 
     options = ask_scan_options(("standard", "22,80"))
 
     assert options.profile_key == "standard"
     assert options.ports == "22,80"
+
+
+def test_recommended_discovery_methods_are_the_default(monkeypatch):
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, True])
+
+    options = ask_scan_options(("quick", None))
+
+    assert options.discovery_methods is None
+
+
+def test_tcp_scan_can_choose_discovery_methods(monkeypatch):
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False])
+    monkeypatch.setattr(
+        scan_menu, "choose_methods_manually", lambda: ["tcp_syn", "udp"]
+    )
+
+    options = ask_scan_options(("quick", None))
+
+    assert options.discovery_methods == ["tcp_syn", "udp"]
+
+
+def test_choosing_no_methods_falls_back_to_recommended(monkeypatch, capsys):
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False])
+    monkeypatch.setattr(scan_menu, "choose_methods_manually", lambda: None)
+
+    options = ask_scan_options(("quick", None))
+
+    assert options.discovery_methods is None
+    assert "recommended discovery methods instead" in capsys.readouterr().out
 
 
 # ---------- the whole scan screen ----------
@@ -282,6 +311,70 @@ def test_host_discovery_choice_calls_discovery_flow(monkeypatch):
     run_scan_flow(session)
 
     assert called == [session]
+
+
+def test_menu_numbers_follow_the_entry_list(monkeypatch):
+    from argus.modules.port_scan import TCP_PROFILES
+
+    entries = scan_menu.scanning_menu_entries()
+
+    assert entries[0][1] == "discovery"
+    assert entries[-1][1] == "custom"
+    assert [action for _, action in entries[1:-1]] == list(TCP_PROFILES)
+
+    for number, (_label, action) in enumerate(entries[1:-1], start=2):
+        feed(monkeypatch, scan_menu, "get_menu_choice", [number])
+        assert ask_scanning_choice() == (action, None)
+
+
+def patch_discovery(monkeypatch, discover):
+    monkeypatch.setattr(scan_menu, "ask_discovery_methods", lambda: ["tcp_syn"])
+    monkeypatch.setattr(scan_menu, "ask_yes_no", lambda prompt: True)
+    monkeypatch.setattr(scan_menu, "wait_for_enter", lambda *a, **k: None)
+    monkeypatch.setattr(scan_menu, "discover_hosts", discover)
+    shown = []
+    monkeypatch.setattr(
+        scan_menu, "show_scan_results", lambda result, **k: shown.append(result)
+    )
+    return shown
+
+
+def test_discovery_result_is_stored_in_the_session(monkeypatch):
+    result = ScanResult(targets=["10.0.0.5"], profile="discovery")
+    shown = patch_discovery(monkeypatch, lambda targets, methods: result)
+    session = make_session()
+
+    scan_menu.run_discovery_flow(session)
+
+    assert session.scan_result is result
+    assert shown == [result]
+
+
+def test_discovery_can_be_cancelled_with_ctrl_c(monkeypatch, capsys):
+    def interrupted(targets, methods):
+        raise KeyboardInterrupt
+
+    shown = patch_discovery(monkeypatch, interrupted)
+    session = make_session()
+
+    scan_menu.run_discovery_flow(session)
+
+    assert session.scan_result is None
+    assert shown == []
+    assert "Host discovery was cancelled" in capsys.readouterr().out
+
+
+def test_discovery_errors_are_shown_and_not_stored(monkeypatch, capsys):
+    def failing(targets, methods):
+        raise NmapNotFoundError("Nmap was not found.")
+
+    patch_discovery(monkeypatch, failing)
+    session = make_session()
+
+    scan_menu.run_discovery_flow(session)
+
+    assert session.scan_result is None
+    assert "Host discovery could not run" in capsys.readouterr().out
 
 
 # ---------- connecting the scan screen to the menus ----------
