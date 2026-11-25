@@ -4,7 +4,11 @@ import ipaddress
 
 from rich.console import Console
 from rich.markup import escape
-
+from argus.modules.discovery import (
+    DISCOVERY_METHODS,
+    DEFAULT_METHODS,
+    discover_hosts,
+)
 from argus.modules.nmap_runner import (
     InvalidScanRequestError,
     ScannerError,
@@ -56,14 +60,17 @@ def show_scope_check(targets: list[str]) -> None:
         print("The warnings above do not confirm authorization.")
 
 
-def ask_tcp_choice() -> tuple[str, str | None] | None:
-    """Ask which TCP scan to run. Returns (profile_key, custom_ports) or None for Back."""
+def ask_scanning_choice() -> tuple[str, str | None] | None:
+    """Ask the user which scanning operation to perform."""
+
     profiles = list(TCP_PROFILES.values())
-    custom_choice = len(profiles) + 1
+    custom_choice = len(profiles) + 2
 
-    print("\nTCP PORT SCAN")
+    print("\nSCANNING OPTIONS")
+    print("-" * 35)
+    print("1. Host Discovery")
 
-    for number, profile in enumerate(profiles, start=1):
+    for number, profile in enumerate(profiles, start=2):
         print(f"{number}. {profile.label} - {profile.description}")
 
     print(f"{custom_choice}. Custom ports")
@@ -77,6 +84,9 @@ def ask_tcp_choice() -> tuple[str, str | None] | None:
     if choice == 0:
         return None
 
+    if choice == 1:
+        return "discovery", None
+
     if choice == custom_choice:
         while True:
             raw_ports = get_text_input(
@@ -89,25 +99,30 @@ def ask_tcp_choice() -> tuple[str, str | None] | None:
             except InvalidScanRequestError as error:
                 print(f"\n{error}")
 
-    return profiles[choice - 1].key, None
+    return profiles[choice - 2].key, None
 
 
-def ask_scan_options() -> ScanOptions | None:
-    """Ask the user what to run. Returns None if they chose Back."""
-    selection = ask_tcp_choice()
-
-    if selection is None:
-        return None
+def ask_scan_options(
+    selection: tuple[str, str | None],
+) -> ScanOptions:
+    """Ask for optional extras after a TCP scan profile is selected."""
 
     profile_key, ports = selection
+
     privileged = is_privileged()
     admin_note = "" if privileged else " (needs Administrator)"
 
     print("\nOPTIONAL EXTRAS")
 
-    service_detection = ask_yes_no("Identify service versions on open ports?")
-    udp_scan = ask_yes_no(f"Scan common UDP ports?{admin_note}")
-    os_estimation = ask_yes_no(f"Estimate operating systems?{admin_note}")
+    service_detection = ask_yes_no(
+        "Identify service versions on open ports?"
+    )
+    udp_scan = ask_yes_no(
+        f"Scan common UDP ports?{admin_note}"
+    )
+    os_estimation = ask_yes_no(
+        f"Estimate operating systems?{admin_note}"
+    )
 
     return ScanOptions(
         profile_key=profile_key,
@@ -117,6 +132,106 @@ def ask_scan_options() -> ScanOptions | None:
         os_estimation=os_estimation,
     )
 
+def ask_discovery_methods() -> list[str] | None:
+    """Let the user choose discovery methods."""
+
+    print("\nHOST DISCOVERY METHODS")
+    print("-" * 35)
+    print("1. Recommended methods")
+    print("2. Choose methods manually")
+    print("0. Back")
+
+    choice = get_menu_choice(
+        "Your next move:",
+        [0, 1, 2],
+    )
+
+    if choice == 0:
+        return None
+
+    if choice == 1:
+        return list(DEFAULT_METHODS)
+
+    selected = []
+    method_keys = list(DISCOVERY_METHODS)
+
+    while True:
+        print("\nSELECT METHODS")
+        print("-" * 35)
+
+        for number, key in enumerate(method_keys, start=1):
+            method = DISCOVERY_METHODS[key]
+            marker = " [selected]" if key in selected else ""
+
+            print(f"{number}. {method.label}{marker}")
+            print(f"   {method.description}")
+
+        print("0. Done")
+
+        choice = get_menu_choice(
+            "Your next move:",
+            [0] + list(range(1, len(method_keys) + 1)),
+        )
+
+        if choice == 0:
+            break
+
+        key = method_keys[choice - 1]
+
+        if key in selected:
+            selected.remove(key)
+        else:
+            selected.append(key)
+
+    if not selected:
+        print("\nNo discovery methods selected.")
+        return None
+
+    return selected
+
+
+def run_discovery_flow(session) -> None:
+    """Run host discovery independently of TCP port scanning."""
+
+    targets = list(session.target)
+
+    show_scope_check(targets)
+
+    methods = ask_discovery_methods()
+
+    if methods is None:
+        print("\nHost discovery cancelled.")
+        return
+
+    print("\nDISCOVERY PLAN")
+    print("-" * 35)
+    print(f"Targets: {', '.join(targets)}")
+    print("Operation: Host discovery only")
+    print("Port scanning: Disabled")
+
+    if not ask_yes_no("Start host discovery now?"):
+        print("\nHost discovery not started.")
+        return
+
+    console.print("\n[dim]Press Ctrl+C to cancel discovery.[/dim]")
+
+    try:
+        with console.status("Discovering hosts..."):
+            result = discover_hosts(
+                targets,
+                methods=methods,
+            )
+
+    except (ScannerError, InvalidScanRequestError) as error:
+        console.print(
+            f"\n[bold red]Host discovery could not run:[/bold red] "
+            f"{escape(str(error))}"
+        )
+        wait_for_enter("Press Enter to continue...")
+        return
+
+    show_scan_results(result)
+    wait_for_enter("Press Enter to continue...")
 
 def show_scan_plan(targets: list[str], options: ScanOptions) -> None:
     """Summarize what is about to run."""
@@ -149,21 +264,29 @@ def run_with_progress(targets: list[str], options: ScanOptions):
         return run_scan_pipeline(targets, options, progress)
 
 
+
 def run_scan_flow(session) -> None:
-    """The full scan screen: check scope, choose options, confirm, run, show results."""
+    """Choose and execute a scanning operation."""
+
     if not session.is_active:
         print("\nNo targets are stored. Choose a target first.")
+        return
+
+    selection = ask_scanning_choice()
+
+    if selection is None:
+        print("\nScanning setup cancelled.")
+        return
+
+    if selection[0] == "discovery":
+        run_discovery_flow(session)
         return
 
     targets = list(session.target)
 
     show_scope_check(targets)
 
-    options = ask_scan_options()
-
-    if options is None:
-        print("\nScan setup cancelled.")
-        return
+    options = ask_scan_options(selection)
 
     show_scan_plan(targets, options)
 
@@ -176,7 +299,8 @@ def run_scan_flow(session) -> None:
 
     except ScannerError as error:
         console.print(
-            f"\n[bold red]The scan could not run:[/bold red] {escape(str(error))}"
+            f"\n[bold red]The scan could not run:[/bold red] "
+            f"{escape(str(error))}"
         )
         wait_for_enter("Press Enter to continue...")
         return
