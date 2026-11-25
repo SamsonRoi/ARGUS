@@ -1,6 +1,7 @@
-
 from dataclasses import dataclass
 from datetime import datetime
+
+from argus.modules.models import ScanResult
 
 
 @dataclass
@@ -8,16 +9,25 @@ class Session:
     target_type: str | None = None
     target: list[str] | None = None
     started_at: datetime | None = None
+    scan_result: ScanResult | None = None
 
     def set_target(self, target_type: str, target: list[str]):
         self.target_type = target_type
-        self.target = target
-        self.started_at = datetime.now().astimezone()
+
+        # Store a copy so later changes to the caller's list
+        # cannot silently change the session.
+        self.target = list(target)
+
+        # The session starts when the first target is stored.
+        # Replacing a target keeps the original start time.
+        if self.started_at is None:
+            self.started_at = datetime.now().astimezone()
 
     def clear(self):
         self.target_type = None
         self.target = None
         self.started_at = None
+        self.scan_result = None
 
     @property
     def is_active(self):

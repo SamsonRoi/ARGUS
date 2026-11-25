@@ -1,4 +1,3 @@
-
 from rich.console import Console # type: ignore
 
 console = Console()
@@ -70,3 +69,17 @@ def wait_for_enter(prompt="Press Enter to continue..."):
 
     except (KeyboardInterrupt, EOFError):
         handle_exit()
+
+
+def ask_yes_no(prompt):
+    """Ask a yes/no question. Returns True for yes and False for no."""
+    while True:
+        answer = get_text_input(f"{prompt} (y/n):").lower()
+
+        if answer in ("y", "yes"):
+            return True
+
+        if answer in ("n", "no"):
+            return False
+
+        console.print("[bold red]Invalid response. Enter y or n.[/bold red]")

@@ -1,4 +1,7 @@
+from argus.results_display import show_scan_results
+from argus.scan_menu import run_scan_flow
 from argus.utils.prompts import (
+    ask_yes_no,
     get_menu_choice,
     get_text_input,
     wait_for_enter
@@ -98,6 +101,10 @@ def collect_target(target_type, prompt):
     print(f"Target Type: {current_session.target_type}")
     print(f"Targets: {', '.join(current_session.target)}")
 
+    # Offer to scan straight away.
+    if ask_yes_no("Set up and run a scan now?"):
+        run_scan_flow(current_session)
+
     return valid_targets
 
 
@@ -185,15 +192,36 @@ def current_session_menu():
                 )
             )
 
-            print("\n1. Clear Session")
+            if current_session.scan_result is None:
+                print("Last scan: none yet")
+            else:
+                print(f"Last scan: {current_session.scan_result.profile}")
+
+            print("\n1. Run Scan")
+            print("2. View Last Results")
+            print("3. Clear Session")
             print("0. Back")
 
             choice = get_menu_choice(
                 "Your next move:",
-                [0, 1]
+                [0, 1, 2, 3]
             )
 
             if choice == 1:
+                run_scan_flow(current_session)
+
+            elif choice == 2:
+                if current_session.scan_result is None:
+                    print("\nNo scan has been run in this session yet.")
+
+                else:
+                    show_scan_results(
+                        current_session.scan_result,
+                        detail_limit=None
+                    )
+                    wait_for_enter("Press Enter to continue...")
+
+            elif choice == 3:
                 current_session.clear()
                 print("\nSession cleared successfully.")
 
