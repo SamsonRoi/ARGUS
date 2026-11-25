@@ -182,3 +182,91 @@ def show_scan_results(
 
     out.print()
     out.print(Text(FOOTER, style="dim"))
+
+# ---------- comparing two scans ----------
+
+COMPARISON_FOOTER = (
+    "A host or port that is missing from the newer scan may be offline, "
+    "filtered or blocking probes. 'Not re-checked' and 'not checked before' "
+    "mean the scans looked at different ports, not that anything changed."
+)
+
+
+def show_comparison(
+    comparison,
+    older_label: str,
+    newer_label: str,
+    output: Console | None = None,
+) -> None:
+    """Print what changed between two scans (a ScanComparison)."""
+    from argus.modules.compare import EVENT_KINDS
+
+    out = output or console
+
+    out.print()
+    out.print(Rule("SCAN COMPARISON", style="cyan"))
+
+    header = Table.grid(padding=(0, 2))
+    header.add_column(style="bold cyan")
+    header.add_column()
+    header.add_row("Older scan", safe_text(older_label))
+    header.add_row("Newer scan", safe_text(newer_label))
+    header.add_row("Hosts matched", Text(str(len(comparison.matches))))
+    header.add_row("Confirmed changes", Text(str(len(comparison.confirmed_changes))))
+    out.print(header)
+
+    if comparison.notes:
+        notes = Text()
+
+        for index, note in enumerate(comparison.notes):
+            if index:
+                notes.append("\n")
+
+            notes.append("- ")
+            notes.append_text(safe_text(note))
+
+        out.print()
+        out.print(Panel(notes, title="What could be compared", border_style="yellow"))
+
+    if not comparison.events:
+        out.print("\n[green]No differences were found in what both scans checked.[/green]")
+    else:
+        counts = Table(title="Summary", title_justify="left")
+        counts.add_column("Change")
+        counts.add_column("Count", justify="right")
+
+        for kind, (label, confirmed) in EVENT_KINDS.items():
+            number = comparison.count(kind)
+
+            if number:
+                counts.add_row(
+                    Text(label, style="" if confirmed else "dim"),
+                    Text(str(number)),
+                )
+
+        out.print()
+        out.print(counts)
+
+        details = Table(title="Details", title_justify="left")
+        details.add_column("Change")
+        details.add_column("Host", style="bold")
+        details.add_column("What happened")
+
+        for event in comparison.events:
+            details.add_row(
+                Text(event.label, style="" if event.confirmed else "dim"),
+                safe_text(event.ip),
+                safe_text(event.summary),
+            )
+
+        out.print()
+        out.print(details)
+
+    if comparison.skipped_out_of_scope:
+        out.print(
+            f"\n[dim]{comparison.skipped_out_of_scope} host(s) were only inside "
+            "one scan's targets and were not compared.[/dim]"
+        )
+
+    out.print()
+    out.print(Text(COMPARISON_FOOTER, style="dim"))

@@ -5,6 +5,7 @@ import ipaddress
 from rich.console import Console
 from rich.markup import escape
 
+from argus.history_menu import save_to_history
 from argus.modules.discovery import (
     DISCOVERY_METHODS,
     DEFAULT_METHODS,
@@ -291,6 +292,7 @@ def run_discovery_flow(session) -> None:
         return
 
     session.scan_result = result
+    save_to_history(session, result)
 
     show_scan_results(result)
     wait_for_enter("Press Enter to continue...")
@@ -368,6 +370,7 @@ def run_scan_flow(session) -> None:
         return
 
     session.scan_result = result
+    save_to_history(session, result)
 
     show_scan_results(result)
     wait_for_enter("Press Enter to continue...")

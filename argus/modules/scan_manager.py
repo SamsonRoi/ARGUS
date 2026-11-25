@@ -221,6 +221,7 @@ def run_scan_pipeline(
                 clean_targets,
                 methods=options.discovery_methods,
                 privileged=privileged,
+                evidence=result.evidence,
             ),
         )
 
@@ -244,7 +245,12 @@ def run_scan_pipeline(
             found = _run_stage(
                 result,
                 "TCP port scan",
-                lambda: scan_tcp_ports(scan_ips, options.profile_key, options.ports),
+                lambda: scan_tcp_ports(
+                    scan_ips,
+                    options.profile_key,
+                    options.ports,
+                    evidence=result.evidence,
+                ),
             )
 
             for host in found or []:
@@ -257,7 +263,7 @@ def run_scan_pipeline(
                 found = _run_stage(
                     result,
                     "UDP port scan",
-                    lambda: scan_udp_ports(scan_ips),
+                    lambda: scan_udp_ports(scan_ips, evidence=result.evidence),
                 )
 
                 for host in found or []:
@@ -270,7 +276,7 @@ def run_scan_pipeline(
                 found = _run_stage(
                     result,
                     "Service detection",
-                    lambda: detect_services(result.hosts),
+                    lambda: detect_services(result.hosts, evidence=result.evidence),
                 )
 
                 for host in found or []:
@@ -292,7 +298,7 @@ def run_scan_pipeline(
                 found = _run_stage(
                     result,
                     "OS estimation",
-                    lambda: estimate_os(scan_ips),
+                    lambda: estimate_os(scan_ips, evidence=result.evidence),
                 )
 
                 # OS estimation never adds hosts or ports: it scans without

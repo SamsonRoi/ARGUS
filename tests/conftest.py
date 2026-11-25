@@ -27,6 +27,18 @@ class FakeScanner:
         return self._version
 
 
+@pytest.fixture(autouse=True)
+def isolated_history(tmp_path, monkeypatch):
+    """Every test gets its own empty scan-history database.
+
+    Without this, tests that run a scan flow would write into the real
+    ~/.argus/argus.db on the developer's machine.
+    """
+    path = tmp_path / "argus-test.db"
+    monkeypatch.setenv("ARGUS_DB", str(path))
+    return path
+
+
 @pytest.fixture
 def fake_scanner():
     """Gives a test the FakeScanner class."""

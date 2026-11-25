@@ -5,6 +5,7 @@ service announces about itself. That information can be wrong, outdated or
 hidden on purpose, so treat it as a clue, not a fact.
 """
 
+from argus.modules.evidence import ScanEvidence
 from argus.modules.models import HostInfo
 from argus.modules.nmap_parser import hosts_from_scanner
 from argus.modules.nmap_runner import InvalidScanRequestError, run_scan
@@ -46,6 +47,7 @@ def build_service_arguments(
 def detect_services(
     hosts: list[HostInfo],
     intensity: int = DEFAULT_INTENSITY,
+    evidence: ScanEvidence | None = None,
 ) -> list[HostInfo]:
     """Identify the services on the open TCP ports of the given hosts."""
     if (
@@ -74,5 +76,8 @@ def detect_services(
         ports=",".join(str(port) for port in ports),
         timeout=SERVICE_TIMEOUT,
     )
+
+    if evidence is not None:
+        evidence.record("service_detection", scanner, coverage=False)
 
     return hosts_from_scanner(scanner)

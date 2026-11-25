@@ -9,6 +9,7 @@ import ipaddress
 import re
 from dataclasses import dataclass
 
+from argus.modules.evidence import ScanEvidence
 from argus.modules.models import HostInfo
 from argus.modules.nmap_parser import hosts_from_scanner
 from argus.modules.nmap_runner import (
@@ -133,6 +134,7 @@ def scan_tcp_ports(
     ips: list[str],
     profile_key: str = "standard",
     ports: str | None = None,
+    evidence: ScanEvidence | None = None,
 ) -> list[HostInfo]:
     """Scan TCP ports on the given hosts. Custom ports override the profile.
 
@@ -160,6 +162,9 @@ def scan_tcp_ports(
         timeout=profile.timeout,
     )
 
+    if evidence is not None:
+        evidence.record("tcp_scan", scanner)
+
     return hosts_from_scanner(scanner)
 
 
@@ -175,6 +180,7 @@ def build_udp_arguments() -> str:
 def scan_udp_ports(
     ips: list[str],
     ports: str | None = None,
+    evidence: ScanEvidence | None = None,
 ) -> list[HostInfo]:
     """Scan a short list of important UDP ports. Needs Administrator/root."""
     clean_ips = validate_targets(ips)
@@ -186,5 +192,8 @@ def scan_udp_ports(
         ports=port_spec,
         timeout=UDP_TIMEOUT,
     )
+
+    if evidence is not None:
+        evidence.record("udp_scan", scanner)
 
     return hosts_from_scanner(scanner)

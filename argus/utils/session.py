@@ -10,6 +10,9 @@ class Session:
     target: list[str] | None = None
     started_at: datetime | None = None
     scan_result: ScanResult | None = None
+    scan_id: int | None = None          # id of scan_result in the history
+    engagement_id: int | None = None    # engagement new scans are filed under
+    engagement_name: str | None = None
 
     def set_target(self, target_type: str, target: list[str]):
         self.target_type = target_type
@@ -28,6 +31,9 @@ class Session:
         self.target = None
         self.started_at = None
         self.scan_result = None
+        self.scan_id = None
+        self.engagement_id = None
+        self.engagement_name = None
 
     @property
     def is_active(self):

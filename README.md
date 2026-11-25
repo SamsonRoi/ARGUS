@@ -41,6 +41,12 @@ ARGUS is under active development.
 - Operating system estimation.
 - Structured scan results and warnings.
 - Nmap execution and XML result parsing.
+- Scan history in a local SQLite database:
+  - Every scan is saved automatically, with Nmap's raw XML as evidence.
+  - Records exactly which ports each scan checked.
+  - Coverage-aware comparison of any two scans.
+  - Baselines, to answer "what changed since then?".
+  - Engagements, to record who authorized the work and what is in scope.
 
 ### Planned Features
 
@@ -49,7 +55,6 @@ ARGUS is under active development.
 - Network topology mapping.
 - Evidence-based risk analysis and prioritization.
 - Report generation in JSON, CSV, HTML, and PDF.
-- Scan history and comparison using SQLite.
 
 ---
 
@@ -145,6 +150,46 @@ Some discovery methods and scan types may require elevated privileges.
 
 ---
 
+## Scan History
+
+Every scan is saved automatically. Open **Scan History** from the main menu to:
+
+- View any saved scan.
+- Compare two scans.
+- Compare the newest scan with its baseline.
+- Mark a scan as the baseline.
+- Delete a scan.
+- Record engagements, and choose which one new scans are filed under.
+
+### How comparison works
+
+ARGUS records exactly which ports each scan checked, and only reports what it can actually tell:
+
+| Result                   | Meaning                                                                 |
+| ------------------------ | ----------------------------------------------------------------------- |
+| Port opened              | Both scans checked the port; it is open now and was not before.         |
+| Port no longer open      | Both scans checked the port; it was open before and is not now.         |
+| Open, not checked before | The port is open now, but the older scan never checked it.              |
+| Not re-checked           | The port was open before, but the newer scan did not check it.          |
+| New host / Host not seen | Only reported for addresses inside both scans' targets.                 |
+| Address changed          | Same MAC address, new IP: the same device moved.                        |
+| Service changed          | The service or version on an open port changed.                         |
+| OS estimate changed      | The operating system estimate changed.                                  |
+
+Hosts are matched by MAC address when both scans saw one, and by IP address otherwise.
+
+### Where the history is stored
+
+- Default: `~/.argus/argus.db`.
+- Under `sudo` on Linux/macOS, ARGUS uses the real user's home folder, so the history is not split between root and your account.
+- Set the `ARGUS_DB` environment variable to use another file.
+
+### Engagements
+
+An engagement records who authorized the work, the authorized scope, and the dates. Scans are filed under the current engagement. ARGUS stores this information but does not enforce the scope yet.
+
+---
+
 ## Project Structure
 
 ```text
@@ -156,11 +201,14 @@ ARGUS/
 │   ├── banner.py
 │   ├── menus.py
 │   ├── scan_menu.py
+│   ├── history_menu.py
 │   ├── results_display.py
 │   │
 │   ├── modules/
 │   │   ├── __init__.py
+│   │   ├── compare.py
 │   │   ├── discovery.py
+│   │   ├── evidence.py
 │   │   ├── models.py
 │   │   ├── nmap_parser.py
 │   │   ├── nmap_runner.py
@@ -168,6 +216,11 @@ ARGUS/
 │   │   ├── scan_manager.py
 │   │   ├── service_detect.py
 │   │   └── os_detect.py
+│   │
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── database.py
+│   │   └── repository.py
 │   │
 │   └── utils/
 │       ├── __init__.py
@@ -207,7 +260,9 @@ python -m pytest -v
 - Some scanning methods require elevated privileges.
 - Scan results do not establish that a vulnerability exists.
 - Vulnerability exploitation and NSE-based vulnerability scanning are not currently part of ARGUS.
-- Scan history and report generation are planned features.
+- Comparisons can only report changes in ports that both scans checked.
+- Engagement scope is recorded but not yet enforced.
+- Report generation is a planned feature.
 
 ---
 
@@ -215,16 +270,16 @@ python -m pytest -v
 
 ARGUS is being developed in stages:
 
-1. Core CLI and session management.
-2. Target parsing and validation.
-3. Nmap integration.
-4. Host discovery.
-5. TCP and UDP port scanning.
-6. Service and operating system detection.
-7. Asset classification and network mapping.
-8. Risk analysis and prioritization.
-9. Report generation.
-10. Scan history and comparison.
+1. Project foundation and interactive CLI. **Done**
+2. Session management. **Done**
+3. Target parsing, validation, and scope checks. **Done**
+4. Nmap engine: host discovery, port scanning, service and OS detection. **Done**
+5. SQLite database, scan history, and comparing scans. **Done**
+6. Asset classification and a network graph.
+7. The risk analysis engine.
+8. Reports: JSON and CSV first, then HTML and PDF.
+
+Next version: enforcing the authorized scope recorded in engagements.
 
 ---
 

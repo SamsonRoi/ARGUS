@@ -54,7 +54,9 @@ def patch_stages(
 
         return run
 
-    def fake_discover(targets, methods=None, timeout=600, privileged=None):
+    def fake_discover(
+        targets, methods=None, timeout=600, privileged=None, evidence=None
+    ):
         calls["discovery"] = (targets,)
 
         if isinstance(discovery, BaseException):

@@ -7,6 +7,7 @@ host is offline: firewalls often block these probes.
 
 from dataclasses import dataclass
 
+from argus.modules.evidence import ScanEvidence
 from argus.modules.models import ScanResult
 from argus.modules.nmap_parser import get_scanner_version, hosts_from_scanner
 from argus.modules.nmap_runner import (
@@ -129,8 +130,13 @@ def discover_hosts(
     methods: list[str] | None = None,
     timeout: int = 600,
     privileged: bool | None = None,
+    evidence: ScanEvidence | None = None,
 ) -> ScanResult:
-    """Find which of the targets respond, and return them as a ScanResult."""
+    """Find which of the targets respond, and return them as a ScanResult.
+
+    Coverage and raw output go into the result's own evidence, and also
+    into `evidence` when a larger scan passes its collector in.
+    """
     clean_targets = validate_targets(targets)
 
     if privileged is None:
@@ -149,6 +155,11 @@ def discover_hosts(
         build_discovery_arguments(chosen),
         timeout=timeout,
     )
+
+    result.evidence.record("discovery", scanner)
+
+    if evidence is not None:
+        evidence.record("discovery", scanner)
 
     result.nmap_version = get_scanner_version(scanner)
 

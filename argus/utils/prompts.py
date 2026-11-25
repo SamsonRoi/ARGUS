@@ -83,3 +83,13 @@ def ask_yes_no(prompt):
             return False
 
         console.print("[bold red]Invalid response. Enter y or n.[/bold red]")
+
+def get_optional_text(prompt):
+    """Ask for text that may be left empty. Returns None when it is."""
+    try:
+        text = console.input(f"\n[bold cyan]{prompt}[/bold cyan] ").strip()
+
+    except (KeyboardInterrupt, EOFError):
+        handle_exit()
+
+    return text or None

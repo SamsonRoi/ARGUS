@@ -1,3 +1,4 @@
+from argus.history_menu import scan_history_menu
 from argus.results_display import show_scan_results
 from argus.scan_menu import run_scan_flow
 from argus.utils.prompts import (
@@ -167,8 +168,7 @@ def about_menu():
 
 
 def show_scan_history():
-    print("\nScan History is not built yet.")
-    wait_for_enter("Press Enter to return to the main menu...")
+    scan_history_menu(current_session)
 
 
 def show_reports():
@@ -195,7 +195,14 @@ def current_session_menu():
             if current_session.scan_result is None:
                 print("Last scan: none yet")
             else:
-                print(f"Last scan: {current_session.scan_result.profile}")
+                saved = (
+                    f" (saved as #{current_session.scan_id})"
+                    if current_session.scan_id
+                    else ""
+                )
+                print(f"Last scan: {current_session.scan_result.profile}{saved}")
+
+            print(f"Engagement: {current_session.engagement_name or 'none'}")
 
             print("\n1. Run Scan")
             print("2. View Last Results")

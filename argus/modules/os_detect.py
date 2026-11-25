@@ -9,6 +9,7 @@ Nmap cannot guess at all.
 import ipaddress
 
 from argus.modules.models import HostInfo
+from argus.modules.evidence import ScanEvidence
 from argus.modules.nmap_parser import hosts_from_scanner
 from argus.modules.nmap_runner import run_scan, validate_targets
 
@@ -31,7 +32,10 @@ def build_os_arguments() -> str:
     return "-O --osscan-limit --top-ports 100 -Pn -T3"
 
 
-def estimate_os(ips: list[str]) -> list[HostInfo]:
+def estimate_os(
+    ips: list[str],
+    evidence: ScanEvidence | None = None,
+) -> list[HostInfo]:
     """Estimate the operating system of each host.
 
     Loopback addresses are skipped, because the local machine cannot be
@@ -49,5 +53,8 @@ def estimate_os(ips: list[str]) -> list[HostInfo]:
         build_os_arguments(),
         timeout=OS_TIMEOUT,
     )
+
+    if evidence is not None:
+        evidence.record("os_estimation", scanner, coverage=False)
 
     return hosts_from_scanner(scanner)

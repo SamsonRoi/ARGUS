@@ -6,6 +6,8 @@ These classes only store data. They never run scans.
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from argus.modules.evidence import ScanEvidence
+
 
 VALID_PROTOCOLS = ("tcp", "udp")
 
@@ -101,6 +103,7 @@ class ScanResult:
     nmap_version: str | None = None
     hosts: list[HostInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    evidence: ScanEvidence = field(default_factory=ScanEvidence)
 
     def add_host(self, host: HostInfo) -> None:
         """Add a host. A host with the same IP address is replaced."""
