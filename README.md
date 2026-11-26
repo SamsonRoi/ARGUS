@@ -63,11 +63,17 @@ ARGUS is under active development.
   - History for each finding: first seen, streak, new since baseline.
   - "Resolved" only when a newer scan really checked again.
   - Accepted risks, with a reason and an expiry date.
+- Reports:
+  - HTML: interactive network map; works offline, nothing loaded from the internet.
+  - PDF, JSON (with a published schema) and CSV.
+  - Optional redaction, for sharing.
+  - SHA-256 tamper evidence, checked with `argus verify`.
+- Command line: `argus scans`, `argus report` and `argus verify`, for automation.
 
 ### Planned Features
 
 - Improved service enumeration.
-- Report generation in JSON, CSV, HTML, and PDF.
+- Enforcing the authorized scope recorded in engagements.
 
 ---
 
@@ -127,6 +133,25 @@ argus
 ```
 
 ARGUS opens an interactive command-line interface.
+
+Commands for scripts and scheduled jobs:
+
+```bash
+argus scans                                    # list saved scans
+argus report 12                                # every report format for scan #12
+argus report --latest -f html,pdf --redact     # newest scan, HTML and PDF, redacted
+argus report 12 -o ./reports                   # choose the output folder
+argus verify ~/ARGUS-reports/.../argus-report.html
+```
+
+`argus verify` exits with one of these codes:
+
+| Code | Meaning                         |
+| ---- | ------------------------------- |
+| 0    | verified                        |
+| 1    | modified                        |
+| 2    | unknown                         |
+| 3    | error, for example a missing file |
 
 ### Basic Workflow
 
@@ -332,6 +357,92 @@ You can add or tune rules without changing code. ARGUS checks the file when it l
 
 ---
 
+## Reports
+
+To make a report, use any of:
+
+- **Main menu → 4. Reports**: a report for the current scan or any saved scan. This menu also verifies report files and opens the reports folder.
+- **Current Session → Generate Report**.
+- **Scan History → Generate a report for a saved scan**.
+- `argus report` on the command line.
+
+After a report is made, ARGUS offers to open it straight away.
+
+Every report is built once from a single report model, so the formats can never disagree. The formats are:
+
+| Format | For                                 | What you get                                                                                       |
+| ------ | ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| HTML   | Reading and presenting              | One self-contained file: clickable network map, findings you can filter and search, sortable assets |
+| PDF    | Printing and sending                | The HTML report on A4 pages: same design, every finding expanded, page numbers                     |
+| JSON   | Other tools                         | The full report model, matching [`argus/data/report.schema.json`](argus/data/report.schema.json)   |
+| CSV    | Spreadsheets                        | One file each for hosts, ports, findings and the fix plan                                          |
+
+### What a report contains
+
+- **Summary**: a plain-language headline, the risk grade, and the key numbers.
+- **Authorization and scope**: the engagement, who authorized it and the scope. It warns about hosts outside the scope, scans outside the engagement's dates, and scans with no engagement at all.
+- **Fix these first**: the plan, ranked by risk removed.
+- **Findings**: evidence, why each matters, the score breakdown, how to fix it, and its history.
+- **Possible attack paths.**
+- **Network map**, with subnets and gateways.
+- **Assets**: roles, evidence, criticality and risk.
+- **Changes since the previous scan**: new, resolved and not re-checked findings, plus network changes.
+- **Method and limitations**: ports checked, warnings, and what the analysis could not see.
+- **Appendix**: every port, host by host.
+
+### Safety
+
+- The HTML report has a strict Content Security Policy. It cannot load or send anything over the internet.
+- Text that came from the network (banners, hostnames) is always escaped in HTML and PDF.
+- In CSV files, cells that could run as spreadsheet formulas (`=`, `+`, `-`, `@`) are neutralised.
+
+### Redaction
+
+Choose **redact** to share a report without revealing the network:
+
+- Every IP address, subnet, MAC address and hostname becomes a consistent label, such as `host-3` or `net-1`. This includes free-text evidence.
+- People's names in the engagement are removed.
+- Finding ids are re-made with a random salt, so they cannot be reversed or linked across reports.
+
+### Tamper evidence
+
+Each report folder has a `SHA256SUMS` file. Standard tools can check it, for example `sha256sum -c SHA256SUMS`. ARGUS also records every report's SHA-256 in its database.
+
+To check reports from the menus, open **Reports → Verify a report file** (also under Scan History):
+
+- ARGUS lists the reports it has made, newest first.
+- Pick one by number, and every file in it (HTML, PDF, JSON, CSV) is checked at once. Moved or deleted files are marked **MISSING**.
+- To check a file someone sent you, press **P** and type its path.
+
+On the command line, `argus verify <file>` checks individual files.
+
+Each file gets one of these results:
+
+- **VERIFIED**: the file is exactly as ARGUS wrote it.
+- **MODIFIED**: the file has been changed.
+- **UNKNOWN**: ARGUS has no record of the file.
+
+The database check is the stronger proof, because someone editing a report could also edit the `SHA256SUMS` file next to it.
+
+### Where reports are saved
+
+- Default: `~/ARGUS-reports/<engagement>-scan-<id>-<date-time>/`.
+- Set `ARGUS_REPORTS_DIR`, or use `argus report -o`, to choose another folder.
+- Under `sudo`, reports go to your own home folder.
+
+### PDF support
+
+The PDF is the HTML report printed by **Microsoft Edge or Google Chrome** in the background, so it has exactly the same fonts, colours, cards and network map:
+
+- **Windows:** Edge is always installed, so PDFs work with nothing extra.
+- **macOS and Linux:** Chrome, Chromium or Edge is used if installed.
+- The browser runs headless with a temporary profile, so it never touches your own browser windows or data.
+- To use a specific browser, set `ARGUS_BROWSER` to its full path.
+
+If no such browser is found, ARGUS falls back to a basic PDF layout made with `reportlab` (`pip install reportlab`), and says so. To always use the basic layout, set `ARGUS_PDF_ENGINE=reportlab`.
+
+---
+
 ## Project Structure
 
 ```text
@@ -345,11 +456,13 @@ ARGUS/
 │   ├── scan_menu.py
 │   ├── history_menu.py
 │   ├── risk_menu.py
+│   ├── report_menu.py
 │   ├── results_display.py
 │   │
 │   ├── data/
 │   │   ├── __init__.py
 │   │   ├── asset_rules.toml
+│   │   ├── report.schema.json
 │   │   └── risk_rules.toml
 │   │
 │   ├── modules/
@@ -370,6 +483,20 @@ ARGUS/
 │   │   ├── topology.py
 │   │   ├── traceroute.py
 │   │   └── versions.py
+│   │
+│   ├── reports/
+│   │   ├── __init__.py
+│   │   ├── model.py
+│   │   ├── redact.py
+│   │   ├── layout.py
+│   │   ├── json_report.py
+│   │   ├── csv_report.py
+│   │   ├── html_report.py
+│   │   ├── pdf_report.py
+│   │   ├── generate.py
+│   │   ├── verify.py
+│   │   └── templates/
+│   │       └── report.html.j2
 │   │
 │   ├── storage/
 │   │   ├── __init__.py
@@ -420,7 +547,7 @@ python -m pytest -v
 - Engagement scope is recorded but not yet enforced.
 - Asset roles are estimates from the evidence a scan collected, not confirmed facts.
 - Without traceroute, the network map's links are inferred from addresses and may not match the real wiring. Nmap cannot trace the local machine itself.
-- Report generation is a planned feature.
+- Redaction replaces addresses and names that ARGUS recognises. Check a redacted report before sharing it widely, in case a banner contains other identifying text.
 
 ---
 
@@ -435,7 +562,7 @@ ARGUS is being developed in stages:
 5. SQLite database, scan history, and comparing scans. **Done**
 6. Asset classification and a network graph. **Done**
 7. The risk analysis engine. **Done**
-8. Reports: JSON and CSV first, then HTML and PDF.
+8. Reports: JSON, CSV, HTML and PDF, with redaction and tamper evidence. **Done**
 
 Next version: enforcing the authorized scope recorded in engagements.
 

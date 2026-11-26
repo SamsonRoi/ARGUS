@@ -137,7 +137,7 @@ def test_history_menu_risk_and_accepted_risks(monkeypatch):
     monkeypatch.setattr(history_menu, "risk_analysis_flow", lambda result, **k: calls.append(k))
     monkeypatch.setattr(history_menu, "accepted_risks_menu", lambda conn: calls.append("accepted"))
     quiet(monkeypatch, history_menu)
-    feed(monkeypatch, history_menu, "get_menu_choice", [3, scan_id, 9, 0])
+    feed(monkeypatch, history_menu, "get_menu_choice", [3, scan_id, 10, 0])
 
     session = Session()
     history_menu.scan_history_menu(session)
@@ -154,7 +154,7 @@ def test_comparison_screen_includes_risk_changes(monkeypatch, capsys):
     first, second = save_scan(connection, older), save_scan(connection, newer)
     connection.close()
     quiet(monkeypatch, history_menu)
-    feed(monkeypatch, history_menu, "get_menu_choice", [4, first, second, 0])
+    feed(monkeypatch, history_menu, "get_menu_choice", [5, first, second, 0])
 
     history_menu.scan_history_menu(Session())
 

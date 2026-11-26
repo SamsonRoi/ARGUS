@@ -18,6 +18,7 @@ from argus.results_display import (
     show_risk_changes,
     show_scan_results,
 )
+from argus.report_menu import generate_report_flow, verify_report_flow
 from argus.risk_menu import accepted_risks_menu, risk_analysis_flow
 from argus.storage.database import StorageError, connect, default_db_path
 from argus.storage.repository import (
@@ -170,6 +171,20 @@ def view_risk(connection, summaries) -> None:
 
     summary = next(item for item in summaries if item.id == scan_id)
     risk_analysis_flow(
+        load_scan(connection, scan_id),
+        scan_id=scan_id,
+        engagement_id=summary.engagement_id,
+    )
+
+
+def report_for_scan(connection, summaries) -> None:
+    scan_id = ask_scan_id(summaries, "Which scan do you want a report for?")
+
+    if scan_id is None:
+        return
+
+    summary = next(item for item in summaries if item.id == scan_id)
+    generate_report_flow(
         load_scan(connection, scan_id),
         scan_id=scan_id,
         engagement_id=summary.engagement_id,
@@ -456,25 +471,31 @@ def scan_history_menu(session) -> None:
             print("\n1. View a saved scan (results and assets)")
             print("2. Network map of a saved scan")
             print("3. Risk analysis of a saved scan")
-            print("4. Compare two scans")
-            print("5. Compare the newest scan with its baseline")
-            print("6. Mark a scan as the baseline")
-            print("7. Delete a scan")
-            print("8. Engagements")
-            print("9. Accepted risks")
+            print("4. Generate a report for a saved scan")
+            print("5. Compare two scans")
+            print("6. Compare the newest scan with its baseline")
+            print("7. Mark a scan as the baseline")
+            print("8. Delete a scan")
+            print("9. Engagements")
+            print("10. Accepted risks")
+            print("11. Verify a report file")
             print("0. Back")
 
-            choice = get_menu_choice("Your next move:", list(range(0, 10)))
+            choice = get_menu_choice("Your next move:", list(range(0, 12)))
 
             if choice == 0:
                 return
 
-            if choice == 8:
+            if choice == 9:
                 engagements_menu(connection, session)
                 continue
 
-            if choice == 9:
+            if choice == 10:
                 accepted_risks_menu(connection)
+                continue
+
+            if choice == 11:
+                verify_report_flow()
                 continue
 
             if not summaries:
@@ -488,12 +509,14 @@ def scan_history_menu(session) -> None:
             elif choice == 3:
                 view_risk(connection, summaries)
             elif choice == 4:
-                compare_two(connection, summaries)
+                report_for_scan(connection, summaries)
             elif choice == 5:
-                compare_latest_with_baseline(connection, summaries, session)
+                compare_two(connection, summaries)
             elif choice == 6:
-                mark_baseline(connection, summaries)
+                compare_latest_with_baseline(connection, summaries, session)
             elif choice == 7:
+                mark_baseline(connection, summaries)
+            elif choice == 8:
                 remove_scan(connection, summaries, session)
 
     except StorageError as error:

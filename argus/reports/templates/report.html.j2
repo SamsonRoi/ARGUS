@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="generator" content="ARGUS {{ report.argus_version }}">
+<title>ARGUS report{% if report.engagement %} - {{ report.engagement.name }}{% endif %} - {{ report.scan.started_at | when }}</title>
+<style>
+  :root {
+    --ink: #1b2430; --muted: #5d6b7c; --line: #dfe4ea; --soft: #f5f7fa; --brand: #0f3d5e;
+    --critical: #b3121f; --high: #e0542e; --medium: #d89a00; --low: #2a7fb8; --info: #8794a3;
+    --ok: #1f8a4c; --observed: #1f8a4c; --inferred: #9aa6b2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  header.top { background: var(--brand); color: #fff; padding: 28px 40px 22px; }
+  header.top h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: .2px; }
+  header.top .meta { opacity: .85; font-size: 14px; }
+  .badge-redacted { display: inline-block; background: #ffd34d; color: #3a2a00; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 8px; font-size: 12px; vertical-align: middle; }
+  nav { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid var(--line); padding: 8px 40px; display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
+  nav a { color: var(--brand); text-decoration: none; }
+  main { max-width: 1180px; margin: 0 auto; padding: 8px 40px 60px; }
+  section { margin-top: 34px; }
+  h2 { font-size: 20px; border-bottom: 2px solid var(--brand); padding-bottom: 6px; margin-bottom: 14px; }
+  h3 { font-size: 16px; margin: 18px 0 8px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 18px 0; }
+  .tile { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--soft); }
+  .tile .value { font-size: 26px; font-weight: 700; }
+  .tile .label { color: var(--muted); font-size: 13px; }
+  .grade { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 8px; font-size: 30px; font-weight: 800; color: #fff; }
+  .grade-A, .grade-B { background: var(--ok); } .grade-C { background: var(--medium); } .grade-D { background: var(--high); } .grade-F { background: var(--critical); }
+  .headline { font-size: 16px; background: var(--soft); border-left: 4px solid var(--brand); padding: 12px 16px; border-radius: 4px; }
+  .callout { border: 1px solid; border-radius: 6px; padding: 10px 14px; margin: 10px 0; }
+  .callout.warn { border-color: #e7c35a; background: #fff8e1; }
+  .callout.bad { border-color: #f0a9a9; background: #fdeeee; }
+  .callout.good { border-color: #9fd3b4; background: #edf8f1; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; white-space: nowrap; }
+  th.sortable { cursor: pointer; } th.sortable::after { content: " \2195"; color: var(--muted); font-size: 11px; }
+  td.num, th.num { text-align: right; }
+  .pri { display: inline-block; min-width: 70px; text-align: center; color: #fff; border-radius: 4px; padding: 1px 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+  .pri-critical { background: var(--critical); } .pri-high { background: var(--high); } .pri-medium { background: var(--medium); }
+  .pri-low { background: var(--low); } .pri-info { background: var(--info); }
+  .chip { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: 12px; margin: 1px 3px 1px 0; background: #eef1f5; color: var(--muted); }
+  .chip.new { background: #f3e5ff; color: #6a1b9a; font-weight: 600; } .chip.streak { background: #fff1d6; color: #8a5a00; }
+  .crit-high { color: var(--critical); font-weight: 600; } .crit-medium { color: #9a6c00; } .crit-low { color: var(--ok); }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 12px; }
+  .toolbar button { border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .toolbar button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .toolbar input { border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; font-size: 13px; min-width: 220px; }
+  details.finding { border: 1px solid var(--line); border-left: 5px solid var(--info); border-radius: 6px; margin: 8px 0; }
+  details.finding[data-priority=critical] { border-left-color: var(--critical); } details.finding[data-priority=high] { border-left-color: var(--high); }
+  details.finding[data-priority=medium] { border-left-color: var(--medium); } details.finding[data-priority=low] { border-left-color: var(--low); }
+  details.finding > summary { cursor: pointer; padding: 9px 12px; display: grid; grid-template-columns: 34px 120px 1fr 260px; gap: 10px; align-items: center; list-style: none; }
+  details.finding > summary::-webkit-details-marker { display: none; }
+  details.finding .body { padding: 4px 16px 14px 56px; }
+  details.finding dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 14px; margin: 6px 0 0; }
+  details.finding dt { color: var(--muted); font-weight: 600; } details.finding dd { margin: 0; }
+  ul.tight { margin: 0; padding-left: 18px; }
+  .where { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+  .map-wrap { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; position: relative; background: #fbfcfd; }
+  .map-wrap svg { display: block; width: 100%; height: auto; cursor: grab; }
+  .map-info { position: absolute; right: 10px; top: 10px; width: 270px; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.08); display: none; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 8px 0; }
+  .legend span::before { content: ""; display: inline-block; width: 22px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+  .legend .plain::before { display: none; }
+  .legend .obs::before { border-color: var(--observed); } .legend .inf::before { border-top: 2px dashed var(--inferred); }
+  svg .node { cursor: pointer; } svg .node text { font-size: 12px; fill: var(--ink); paint-order: stroke; stroke: #fbfcfd; stroke-width: 4px; stroke-linejoin: round; } svg .node text.sub { font-size: 10.5px; fill: var(--muted); }
+  svg .dim { opacity: .18; } svg .hl line, svg line.hl { stroke-width: 3.5; }
+  footer { border-top: 1px solid var(--line); margin-top: 50px; padding: 16px 40px; color: var(--muted); font-size: 13px; }
+  @media screen and (max-width: 800px) { main, nav, header.top { padding-left: 16px; padding-right: 16px; } details.finding > summary { grid-template-columns: 30px 1fr; } details.finding .body { padding-left: 16px; } }
+  /* ---------- printing and PDF: the same design, laid out on A4 pages ---------- */
+  @page {
+    size: A4;
+    margin: 14mm 13mm 16mm;
+    @bottom-left { content: "ARGUS network security report{% if report.engagement %} \00B7  {{ report.engagement.name | css_text }}{% endif %}{% if report.redacted %}  \00B7  REDACTED{% endif %}"; font: 7.5pt -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #5d6b7c; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #5d6b7c; }
+  }
+  @page :first { margin-top: 0; }
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-size: 10pt; }
+    nav, .toolbar, .map-info, .map-hint, #no-match { display: none !important; }
+    header.top { padding: 13mm 9mm 7mm; border-radius: 0 0 8px 8px; }
+    header.top h1 { font-size: 24pt; margin-bottom: 6px; }
+    main { max-width: none; padding: 0; }
+    section { margin-top: 18px; }
+    h2 { font-size: 14pt; break-after: avoid; }
+    h3 { break-after: avoid; }
+    table { font-size: 8.5pt; }
+    th, td { padding: 4px 6px; }
+    tr, .tile, .callout, .headline, details.finding, .map-wrap { break-inside: avoid; }
+    .tiles { grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .tile { padding: 8px 10px; } .tile .value { font-size: 18pt; }
+    #findings, #map, #method { break-before: page; }
+    details.finding { margin: 6px 0; }
+    details.finding > summary { grid-template-columns: 28px 105px 1fr 190px; padding: 7px 10px; }
+    details.finding .body { padding: 2px 12px 10px 48px; }
+    details.finding dl { grid-template-columns: 110px 1fr; gap: 3px 10px; font-size: 9pt; }
+    .map-wrap svg { max-height: 200mm; }
+    svg .node text { font-size: 15px; } svg .node text.sub { font-size: 12.5px; }
+    th.sortable::after { content: none; }
+    .print-hide { display: none; }
+    #asset-table td:nth-child(3) { width: 38%; }
+    #appendix details > summary { list-style: none; font-weight: 600; margin-top: 8px; }
+    footer { padding: 10px 0 0; margin-top: 20px; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Network security report{% if report.redacted %}<span class="badge-redacted">REDACTED</span>{% endif %}</h1>
+  <div class="meta">
+    {% if report.engagement %}{{ report.engagement.name }} &middot; {% endif %}
+    Scan{% if report.scan.id %} #{{ report.scan.id }}{% endif %} of {{ report.scan.targets | join(", ") }}
+    &middot; {{ report.scan.started_at | when }} &middot; {{ report.scan.profile }}
+  </div>
+</header>
+
+<nav>
+  <a href="#summary">Summary</a>
+  <a href="#authorization">Authorization</a>
+  <a href="#plan">Fix first</a>
+  <a href="#findings">Findings ({{ report.findings | length }})</a>
+  {% if report.attack_paths %}<a href="#paths">Attack paths</a>{% endif %}
+  <a href="#map">Network map</a>
+  <a href="#assets">Assets ({{ report.hosts | length }})</a>
+  {% if report.changes %}<a href="#changes">Changes</a>{% endif %}
+  <a href="#method">Method &amp; limits</a>
+</nav>
+
+<main>
+
+<section id="summary">
+  <h2>Summary</h2>
+  <div class="tiles">
+    <div class="tile"><div class="label">Risk grade</div><span class="grade grade-{{ report.summary.grade }}">{{ report.summary.grade }}</span>
+      <div class="small muted">{{ report.summary.grade_reason }}</div></div>
+    <div class="tile"><div class="value">{{ report.summary.findings }}</div><div class="label">open findings</div>
+      <div class="small">
+      {% for band in priorities %}{% if report.summary.findings_by_priority[band] %}<span class="pri pri-{{ band }}" style="min-width:0">{{ report.summary.findings_by_priority[band] }} {{ band }}</span> {% endif %}{% endfor %}
+      </div></div>
+    <div class="tile"><div class="value">{{ report.summary.total_risk }}</div><div class="label">total risk points</div></div>
+    <div class="tile"><div class="value">{{ report.summary.hosts_up }}</div><div class="label">hosts responded</div></div>
+    <div class="tile"><div class="value">{{ report.summary.open_ports }}</div><div class="label">open ports</div></div>
+    {% if report.summary.accepted_risks %}<div class="tile"><div class="value">{{ report.summary.accepted_risks }}</div><div class="label">accepted risks</div></div>{% endif %}
+  </div>
+  <p class="headline">{{ report.summary.headline }}</p>
+  {% if report.scan.incomplete %}<div class="callout warn"><strong>This scan was stopped before it finished.</strong> The results cover only part of the network.</div>{% endif %}
+</section>
+
+<section id="authorization">
+  <h2>Authorization and scope</h2>
+  {% if report.engagement %}
+  {% set e = report.engagement %}
+  <table>
+    <tr><th style="width:200px">Engagement</th><td>{{ e.name }}</td></tr>
+    <tr><th>Authorized by</th><td>{{ e.authorized_by | dash }}</td></tr>
+    <tr><th>Authorized scope</th><td class="mono">{{ e.scope | join(", ") | dash }}</td></tr>
+    <tr><th>Dates</th><td>{% if e.starts_on or e.ends_on %}{{ e.starts_on or "open" }} to {{ e.ends_on or "open" }}{% else %}<span class="muted">not recorded</span>{% endif %}</td></tr>
+    {% if e.notes %}<tr><th>Notes</th><td>{{ e.notes }}</td></tr>{% endif %}
+    <tr><th>Scanned targets</th><td class="mono">{{ report.scan.targets | join(", ") }}</td></tr>
+  </table>
+  {% if e.hosts_outside_scope %}
+  <div class="callout bad"><strong>{{ e.hosts_outside_scope | length }} responding host(s) are outside the authorized scope:</strong>
+    <span class="mono">{{ e.hosts_outside_scope | join(", ") }}</span>. Confirm these were authorized before acting on any result about them.</div>
+  {% else %}
+  <div class="callout good">Every responding host is inside the authorized scope.</div>
+  {% endif %}
+  {% if e.scan_within_dates == false %}
+  <div class="callout bad"><strong>The scan date is outside the engagement's dates.</strong></div>
+  {% endif %}
+  {% else %}
+  <div class="callout warn"><strong>No engagement was recorded for this scan.</strong> This report does not show who authorized the work or what was in scope. Only scan networks you own or have written permission to assess.</div>
+  <p class="small muted">Scanned targets: <span class="mono">{{ report.scan.targets | join(", ") }}</span></p>
+  {% endif %}
+</section>
+
+<section id="plan">
+  <h2>Fix these first</h2>
+  {% if report.fix_plan %}
+  <p class="muted small">Each row groups findings that share one fix. "Risk removed" adds up the scores of the findings that fix would close.</p>
+  <table>
+    <tr><th class="num">#</th><th>Fix</th><th>What to do</th><th class="num">Findings</th><th>Where</th><th class="num">Risk removed</th></tr>
+    {% for action in report.fix_plan %}
+    <tr>
+      <td class="num">{{ action.rank }}</td>
+      <td><span class="pri pri-{{ action.worst_severity }}">{{ action.worst_severity }}</span><br>{{ action.title }}</td>
+      <td>{{ action.fix }}</td>
+      <td class="num">{{ action.findings }}</td>
+      <td class="where">{{ action.where | join(", ") }}</td>
+      <td class="num"><strong>{{ action.risk_removed }}</strong></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="callout good">Nothing to fix in what this scan could see.</div>
+  {% endif %}
+</section>
+
+<section id="findings">
+  <h2>Findings</h2>
+  {% if report.findings %}
+  <div class="toolbar" id="finding-filters">
+    <button type="button" class="on" data-filter="all">All</button>
+    {% for band in priorities %}{% if report.summary.findings_by_priority[band] %}<button type="button" data-filter="{{ band }}">{{ band | capitalize }} ({{ report.summary.findings_by_priority[band] }})</button>{% endif %}{% endfor %}
+    <input type="search" id="finding-search" placeholder="Search findings, hosts, ports…" aria-label="Search findings">
+    <button type="button" id="expand-all">Expand all</button>
+  </div>
+  {% for f in report.findings %}
+  <details class="finding"{% if for_print %} open{% endif %} data-priority="{{ f.priority }}" data-search="{{ (f.title ~ ' ' ~ f.where ~ ' ' ~ (f.host_label or '') ~ ' ' ~ f.category_label) | lower }}" id="finding-{{ f.number }}">
+    <summary>
+      <strong>#{{ f.number }}</strong>
+      <span><span class="pri pri-{{ f.priority }}">{{ f.score }} {{ f.priority }}</span></span>
+      <span><strong>{{ f.title }}</strong><br><span class="small muted">{{ f.category_label }}</span></span>
+      <span class="where">{{ f.where }}<br>
+        {% if f.history.new_since_baseline %}<span class="chip new">NEW since baseline</span>{% endif %}
+        {% if f.history.streak and f.history.streak > 1 %}<span class="chip streak">open for {{ f.history.streak }} scans</span>{% endif %}
+        {% if f.history.first_seen_scan %}<span class="chip">first seen in #{{ f.history.first_seen_scan }}</span>{% endif %}
+      </span>
+    </summary>
+    <div class="body">
+      <dl>
+        <dt>Where</dt><dd>{{ f.host_label or f.where }}</dd>
+        <dt>Evidence</dt><dd><ul class="tight">{% for line in f.evidence %}<li>{{ line }}</li>{% endfor %}</ul></dd>
+        <dt>Why it matters</dt><dd>{{ f.why }}</dd>
+        {% if f.raised_because %}<dt>Raised because</dt><dd><ul class="tight">{% for line in f.raised_because %}<li>{{ line }}</li>{% endfor %}</ul></dd>{% endif %}
+        <dt>Score</dt><dd class="mono">{{ f.score }} = {{ f.score_factors | join(" ") }}</dd>
+        <dt>Confidence</dt><dd>{{ f.confidence }}</dd>
+        <dt>How to fix</dt><dd><strong>{{ f.fix }}</strong></dd>
+        {% if f.references %}<dt>References</dt><dd>{{ f.references | join("; ") }}</dd>{% endif %}
+        <dt>Finding id</dt><dd class="mono">{{ f.id }}</dd>
+      </dl>
+    </div>
+  </details>
+  {% endfor %}
+  <p id="no-match" class="muted" hidden>No findings match.</p>
+  {% else %}
+  <div class="callout good">No open risk findings in what this scan could see.</div>
+  {% endif %}
+
+  {% if report.accepted_risks %}
+  <h3>Accepted risks (not counted in the grade)</h3>
+  <table>
+    <tr><th>Finding</th><th>Where</th><th>Reason</th><th>Accepted by</th><th>Until</th></tr>
+    {% for f in report.accepted_risks %}
+    <tr><td>{{ f.title }}</td><td class="where">{{ f.where }}</td><td>{{ f.acceptance.reason }}</td>
+      <td>{{ f.acceptance.accepted_by | dash }}</td><td>{{ f.acceptance.expires_on or "no expiry" }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+
+{% if report.attack_paths %}
+<section id="paths">
+  <h2>Possible attack paths</h2>
+  <p class="muted small">A weakly protected device that shares a network with a critical one. Possible, not proven: ARGUS cannot see firewalls between hosts on the same subnet.</p>
+  <table>
+    <tr><th>Starting point (weak)</th><th>Why it is weak</th><th>Could reach (critical)</th><th>Basis</th></tr>
+    {% for p in report.attack_paths %}
+    <tr><td>{{ p.from_label }}</td><td><ul class="tight">{% for r in p.why_weak %}<li>{{ r }}</li>{% endfor %}</ul></td>
+      <td><strong>{{ p.to_label }}</strong></td><td class="muted">{{ p.basis }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section id="map">
+  <h2>Network map</h2>
+  <div class="legend">
+    <span class="obs">observed (seen by traceroute)</span>
+    <span class="inf">inferred (from addresses only)</span>
+    <span class="plain">node colour = asset criticality (red high, amber medium, green low); badge = open findings</span>
+  </div>
+  {% if diagram.nodes %}
+  <div class="map-wrap">
+    <svg id="network-svg" viewBox="0 0 {{ diagram.width }} {{ diagram.height }}" role="img" aria-label="Network map">
+      {% for b in diagram.boxes %}
+      <g class="box">
+        <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}" rx="10" fill="#ffffff" stroke="#c9d2dc"/>
+        <text x="{{ b.x + 14 }}" y="{{ b.y + 24 }}" font-size="14" font-weight="700" fill="#0f3d5e">{{ b.label }}</text>
+        {% if b.note %}<text x="{{ b.x + 14 }}" y="{{ b.y + 42 }}" font-size="11" fill="#8a5a00">{{ b.note }}</text>{% endif %}
+      </g>
+      {% endfor %}
+      {% for l in diagram.links %}
+      <line class="link" data-source="{{ l.source }}" data-target="{{ l.target }}" x1="{{ l.x1 }}" y1="{{ l.y1 }}" x2="{{ l.x2 }}" y2="{{ l.y2 }}"
+        stroke="{{ '#1f8a4c' if l.kind == 'observed' else '#9aa6b2' }}" stroke-width="{{ 2.2 if l.kind == 'observed' else 1.2 }}"{% if l.kind != 'observed' %} stroke-dasharray="5 4"{% endif %}><title>{{ l.kind }}: {{ l.reason }}</title></line>
+      {% endfor %}
+      {% for n in diagram.nodes %}
+      {% set fill = {'high': '#b3121f', 'medium': '#d89a00', 'low': '#1f8a4c'}.get(n.criticality, '#5d6b7c') %}
+      <g class="node" data-id="{{ n.id }}" data-label="{{ n.label }}" data-role="{{ n.sublabel }}" data-criticality="{{ n.criticality or '' }}" data-findings="{{ n.findings }}" data-risk="{{ n.risk if n.risk is not none else '' }}" data-kind="{{ n.kind }}" transform="translate({{ n.x }},{{ n.y }})">
+        {% if n.kind == 'gateway' %}
+        <rect x="-13" y="-13" width="26" height="26" transform="rotate(45)" fill="{{ fill }}" stroke="#fff" stroke-width="2"/>
+        {% elif n.kind == 'scanner' %}
+        <rect x="-18" y="-12" width="36" height="24" rx="4" fill="#0f3d5e"/>
+        {% elif n.kind == 'hop' %}
+        <rect x="-8" y="-8" width="16" height="16" fill="#8794a3"/>
+        {% else %}
+        <circle r="13" fill="{{ fill }}" stroke="#fff" stroke-width="2"/>
+        {% endif %}
+        {% if n.findings %}<circle cx="13" cy="-12" r="8" fill="#ffffff" stroke="#b3121f" stroke-width="1.5"/><text x="13" y="-8" text-anchor="middle" font-size="10" font-weight="700" fill="#b3121f">{{ n.findings }}</text>{% endif %}
+        <text y="{{ 30 if n.kind != 'scanner' else 30 }}" text-anchor="middle">{{ n.label }}</text>
+        {% if n.sublabel %}<text class="sub" y="44" text-anchor="middle">{{ n.sublabel }}</text>{% endif %}
+        <title>{{ n.label }}{% if n.sublabel %} - {{ n.sublabel }}{% endif %}</title>
+      </g>
+      {% endfor %}
+    </svg>
+    <div class="map-info" id="map-info" aria-live="polite">
+      <strong id="mi-label"></strong><br>
+      <span id="mi-role" class="muted"></span><br>
+      Criticality: <span id="mi-crit"></span><br>
+      Open findings: <span id="mi-findings"></span><br>
+      Host risk: <span id="mi-risk"></span>
+    </div>
+  </div>
+  <p class="small muted map-hint">Click a device to highlight its links; scroll to zoom and drag to move.</p>
+  {% else %}
+  <p class="muted">No hosts responded, so there is nothing to map.</p>
+  {% endif %}
+  {% if report.network.notes %}<ul class="small muted">{% for note in report.network.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% endif %}
+  <h3>Subnets</h3>
+  <table>
+    <tr><th>Subnet</th><th class="num">Hosts</th><th>Gateway</th><th>How the gateway was found</th></tr>
+    {% for s in report.network.subnets %}
+    <tr><td class="mono">{{ s.network }}{% if s.size_assumed %} <span class="chip">size assumed</span>{% endif %}</td><td class="num">{{ s.hosts | length }}</td>
+      <td class="mono">{{ s.gateway | dash }}</td><td>{% if s.gateway %}{{ s.gateway_basis }}: {{ s.gateway_reason }}{% else %}not identified{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section id="assets">
+  <h2>Assets</h2>
+  <table id="asset-table">
+    <thead><tr><th class="sortable">Host</th><th class="sortable">Likely role</th><th>Evidence</th><th class="sortable">Criticality</th><th class="sortable num">Risk</th><th class="sortable num">Open ports</th><th class="sortable print-hide">OS estimate</th><th class="print-hide">Vendor</th></tr></thead>
+    <tbody>
+    {% for h in report.hosts %}
+    <tr id="host-{{ h.ip | replace('.', '-') | replace(':', '-') }}">
+      <td class="mono">{{ h.ip }}{% if h.hostname %}<br><span class="muted">{{ h.hostname }}</span>{% endif %}</td>
+      <td>{% if h.roles %}{{ h.roles[0].label }} <span class="muted">({{ h.roles[0].confidence }})</span>
+          {% for r in h.roles[1:] %}<br><span class="small muted">also: {{ r.label }} ({{ r.confidence }})</span>{% endfor %}
+          {% else %}<span class="muted">Unknown</span>{% endif %}</td>
+      <td class="small">{% if h.roles %}<ul class="tight">{% for line in h.roles[0].evidence %}<li>{{ line }}</li>{% endfor %}</ul>{% else %}-{% endif %}</td>
+      <td class="crit-{{ h.criticality }}" data-sort="{{ {'high': 3, 'medium': 2, 'low': 1}.get(h.criticality, 0) }}">{{ (h.criticality or '-') | capitalize }}</td>
+      <td class="num" data-sort="{{ h.risk_score or 0 }}">{{ h.risk_score if h.risk_score is not none else '-' }}</td>
+      <td class="num">{{ h.ports | selectattr('state', 'equalto', 'open') | list | length }}</td>
+      <td class="print-hide">{% if h.os %}{{ h.os.name }} <span class="muted">({{ h.os.accuracy }}%)</span>{% else %}-{% endif %}</td>
+      <td class="print-hide">{{ h.vendor | dash }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if report.changes %}
+{% set c = report.changes %}
+<section id="changes">
+  <h2>Changes since scan #{{ c.compared_with }}</h2>
+  <p class="muted small">Compared with the previous scan of the same engagement ({{ c.compared_with_started_at | when }}). "Resolved" means this scan checked again and the problem was gone; "not re-checked" means this scan did not look, so the result is unknown.</p>
+  <div class="tiles">
+    <div class="tile"><div class="value">{{ c.new | length }}</div><div class="label">new findings</div></div>
+    <div class="tile"><div class="value">{{ c.resolved | length }}</div><div class="label">resolved</div></div>
+    <div class="tile"><div class="value">{{ c.not_rechecked | length }}</div><div class="label">not re-checked</div></div>
+    <div class="tile"><div class="value">{{ c.scan_changes | selectattr('confirmed') | list | length }}</div><div class="label">confirmed network changes</div></div>
+  </div>
+  {% if c.new or c.resolved or c.not_rechecked %}
+  <table>
+    <tr><th>Change</th><th>Finding</th><th>Where</th></tr>
+    {% for f in c.new %}<tr><td><span class="chip new">New</span></td><td>{{ f.title }}</td><td class="where">{{ f.where }}</td></tr>{% endfor %}
+    {% for f in c.resolved %}<tr><td><span class="chip" style="background:#edf8f1;color:#1f8a4c">Resolved</span></td><td>{{ f.title }}</td><td class="where">{{ f.where }}</td></tr>{% endfor %}
+    {% for f in c.not_rechecked %}<tr><td><span class="chip">Not re-checked</span></td><td>{{ f.title }}</td><td class="where">{{ f.where }}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+  {% if c.scan_changes %}
+  <h3>Network changes</h3>
+  <table>
+    <tr><th>Change</th><th>Host</th><th>What happened</th></tr>
+    {% for e in c.scan_changes %}<tr{% if not e.confirmed %} class="muted"{% endif %}><td>{{ e.label }}</td><td class="mono">{{ e.host }}</td><td>{{ e.summary }}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+  {% if c.comparison_notes %}<ul class="small muted">{% for note in c.comparison_notes %}<li>{{ note }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+
+<section id="method">
+  <h2>Method and limitations</h2>
+  <table>
+    <tr><th style="width:200px">Scan type</th><td>{{ report.scan.profile }}</td></tr>
+    <tr><th>Targets</th><td class="mono">{{ report.scan.targets | join(", ") }}</td></tr>
+    <tr><th>Started / finished</th><td>{{ report.scan.started_at | when }} / {{ report.scan.finished_at | when }}{% if report.scan.duration_seconds %} ({{ report.scan.duration_seconds | round(1) }} s){% endif %}</td></tr>
+    <tr><th>Ports checked</th><td>{% for proto, count in report.scan.coverage.items() %}{{ "{:,}".format(count) }} {{ proto | upper }}{% if not loop.last %}, {% endif %}{% else %}none recorded{% endfor %}</td></tr>
+    <tr><th>Nmap version</th><td>{{ report.scan.nmap_version | dash }}</td></tr>
+    <tr><th>Rules</th><td>asset rules v{{ report.rules.asset_rules_version | dash }}, risk rules v{{ report.rules.risk_rules_version | dash }}</td></tr>
+  </table>
+  {% if report.scan.warnings %}<h3>Scan warnings</h3><ul>{% for w in report.scan.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  {% if report.analysis_notes %}<h3>What this analysis could not see</h3><ul>{% for n in report.analysis_notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  <h3>Limitations</h3>
+  <ul>{% for item in report.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
+</section>
+
+<section id="appendix">
+  <h2>Appendix: ports by host</h2>
+  {% for h in report.hosts if h.ports %}
+  <details{% if for_print %} open{% endif %}>
+    <summary class="mono">{{ h.ip }}{% if h.hostname %} ({{ h.hostname }}){% endif %} &middot; {{ h.ports | length }} port(s)</summary>
+    <table>
+      <tr><th class="num">Port</th><th>State</th><th>Service</th><th>Software</th><th>Details</th></tr>
+      {% for p in h.ports %}<tr><td class="num mono">{{ p.port }}/{{ p.protocol }}</td><td>{{ p.state }}</td><td>{{ p.service | dash }}</td>
+        <td>{{ ((p.product or '') ~ ' ' ~ (p.version or '')) | trim | dash }}</td><td class="small">{{ p.extra_info | dash }}</td></tr>{% endfor %}
+    </table>
+  </details>
+  {% else %}
+  <p class="muted">No open ports were found.</p>
+  {% endfor %}
+</section>
+
+</main>
+
+<footer>
+  Generated by ARGUS {{ report.argus_version }} on {{ report.generated_at | when }} &middot; report format {{ report.schema }}{% if report.redacted %} &middot; addresses, hostnames and names are redacted{% endif %}.<br>
+  To check that this file has not been changed, run <span class="mono">argus verify &lt;this file&gt;</span>; its SHA-256 is listed in the SHA256SUMS file saved next to it.
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ----- findings: filter by priority and search -----
+  var cards = Array.prototype.slice.call(document.querySelectorAll("details.finding"));
+  var active = "all";
+  var search = document.getElementById("finding-search");
+  var noMatch = document.getElementById("no-match");
+
+  function applyFilter() {
+    var term = search ? search.value.trim().toLowerCase() : "";
+    var shown = 0;
+    cards.forEach(function (card) {
+      var ok = (active === "all" || card.getAttribute("data-priority") === active) &&
+               (!term || card.getAttribute("data-search").indexOf(term) !== -1);
+      card.hidden = !ok;
+      if (ok) { shown += 1; }
+    });
+    if (noMatch) { noMatch.hidden = shown !== 0; }
+  }
+
+  document.querySelectorAll("#finding-filters button[data-filter]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      document.querySelectorAll("#finding-filters button[data-filter]").forEach(function (b) { b.classList.remove("on"); });
+      button.classList.add("on");
+      active = button.getAttribute("data-filter");
+      applyFilter();
+    });
+  });
+  if (search) { search.addEventListener("input", applyFilter); }
+
+  var expand = document.getElementById("expand-all");
+  if (expand) {
+    expand.addEventListener("click", function () {
+      var open = expand.textContent === "Expand all";
+      cards.forEach(function (card) { card.open = open; });
+      expand.textContent = open ? "Collapse all" : "Expand all";
+    });
+  }
+
+  // ----- assets: sortable columns -----
+  var table = document.getElementById("asset-table");
+  if (table) {
+    table.querySelectorAll("th.sortable").forEach(function (th) {
+      var index = Array.prototype.indexOf.call(th.parentNode.children, th);
+      var ascending = false;
+      th.addEventListener("click", function () {
+        var body = table.tBodies[0];
+        var rows = Array.prototype.slice.call(body.rows);
+        ascending = !ascending;
+        rows.sort(function (a, b) {
+          var x = a.cells[index], y = b.cells[index];
+          var xs = x.getAttribute("data-sort"), ys = y.getAttribute("data-sort");
+          var xv = xs !== null ? parseFloat(xs) : x.textContent.trim().toLowerCase();
+          var yv = ys !== null ? parseFloat(ys) : y.textContent.trim().toLowerCase();
+          if (xs === null && !isNaN(parseFloat(xv)) && /^\d/.test(xv)) { xv = parseFloat(xv); yv = parseFloat(yv); }
+          return (xv > yv ? 1 : xv < yv ? -1 : 0) * (ascending ? 1 : -1);
+        });
+        rows.forEach(function (row) { body.appendChild(row); });
+      });
+    });
+  }
+
+  // ----- network map: highlight, details, zoom and pan -----
+  var svg = document.getElementById("network-svg");
+  if (!svg) { return; }
+
+  var info = document.getElementById("map-info");
+  var links = Array.prototype.slice.call(svg.querySelectorAll("line.link"));
+  var nodes = Array.prototype.slice.call(svg.querySelectorAll("g.node"));
+  var selected = null;
+
+  function setText(id, value) { document.getElementById(id).textContent = value || "-"; }
+
+  function select(node) {
+    if (selected === node) { node = null; }
+    selected = node;
+    if (!node) {
+      links.concat(nodes).forEach(function (el) { el.classList.remove("dim"); el.classList.remove("hl"); });
+      info.style.display = "none";
+      return;
+    }
+    var id = node.getAttribute("data-id");
+    var near = {}; near[id] = true;
+    links.forEach(function (line) {
+      var touches = line.getAttribute("data-source") === id || line.getAttribute("data-target") === id;
+      line.classList.toggle("dim", !touches);
+      line.classList.toggle("hl", touches);
+      if (touches) { near[line.getAttribute("data-source")] = true; near[line.getAttribute("data-target")] = true; }
+    });
+    nodes.forEach(function (other) { other.classList.toggle("dim", !near[other.getAttribute("data-id")]); });
+    setText("mi-label", node.getAttribute("data-label"));
+    setText("mi-role", node.getAttribute("data-role") || node.getAttribute("data-kind"));
+    setText("mi-crit", node.getAttribute("data-criticality"));
+    setText("mi-findings", node.getAttribute("data-findings"));
+    setText("mi-risk", node.getAttribute("data-risk"));
+    info.style.display = "block";
+  }
+
+  nodes.forEach(function (node) {
+    node.addEventListener("click", function (event) { event.stopPropagation(); select(node); });
+  });
+
+  var box = svg.viewBox.baseVal;
+  var original = { x: box.x, y: box.y, w: box.width, h: box.height };
+  var drag = null;
+
+  svg.addEventListener("wheel", function (event) {
+    event.preventDefault();
+    var scale = event.deltaY > 0 ? 1.12 : 1 / 1.12;
+    var rect = svg.getBoundingClientRect();
+    var px = box.x + (event.clientX - rect.left) / rect.width * box.width;
+    var py = box.y + (event.clientY - rect.top) / rect.height * box.height;
+    var w = Math.min(original.w * 3, Math.max(original.w / 6, box.width * scale));
+    var h = w * original.h / original.w;
+    box.x = px - (px - box.x) * w / box.width;
+    box.y = py - (py - box.y) * h / box.height;
+    box.width = w; box.height = h;
+  }, { passive: false });
+
+  svg.addEventListener("mousedown", function (event) { drag = { x: event.clientX, y: event.clientY, bx: box.x, by: box.y }; });
+  window.addEventListener("mouseup", function () { drag = null; });
+  window.addEventListener("mousemove", function (event) {
+    if (!drag) { return; }
+    var rect = svg.getBoundingClientRect();
+    box.x = drag.bx - (event.clientX - drag.x) / rect.width * box.width;
+    box.y = drag.by - (event.clientY - drag.y) / rect.height * box.height;
+  });
+  svg.addEventListener("click", function () { select(null); });
+  svg.addEventListener("dblclick", function () { box.x = original.x; box.y = original.y; box.width = original.w; box.height = original.h; });
+}());
+</script>
+</body>
+</html>

@@ -151,6 +151,21 @@ MIGRATIONS: list[str] = [
 
     CREATE INDEX idx_acceptances_fingerprint ON risk_acceptances(fingerprint);
     """,
+    # ----- Version 4: generated reports, for verifying them later -----
+    """
+    CREATE TABLE reports (
+        id         INTEGER PRIMARY KEY,
+        scan_id    INTEGER REFERENCES scans(id) ON DELETE SET NULL,
+        format     TEXT NOT NULL,       -- json, csv, html, pdf
+        path       TEXT NOT NULL,
+        sha256     TEXT NOT NULL,
+        size       INTEGER NOT NULL,
+        redacted   INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX idx_reports_sha256 ON reports(sha256);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

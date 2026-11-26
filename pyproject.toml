@@ -12,6 +12,7 @@ license = {text = "MIT"}
 dependencies = [
     "rich>=13.0",
     "python-nmap>=0.7.1",
+    "jinja2>=3.1",
     "tomli>=2.0; python_version < '3.11'",
 ]
 
@@ -19,12 +20,18 @@ dependencies = [
 argus = "argus.main:main"
 
 [project.optional-dependencies]
+pdf = [
+    "reportlab>=4.0",
+]
 dev = [
     "pytest>=7.0",
+    "jsonschema>=4.0",
+    "reportlab>=4.0",
 ]
 
 [tool.setuptools.packages.find]
 include = ["argus*"]
 
 [tool.setuptools.package-data]
-"argus.data" = ["*.toml"]
+"argus.data" = ["*.toml", "*.json"]
+"argus.reports" = ["templates/*.j2"]

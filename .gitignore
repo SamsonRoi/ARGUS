@@ -16,8 +16,11 @@ env/
 
 # ---------- ARGUS generated data ----------
 # Scan reports and the scan history database should stay on your machine.
-reports/
-output/
+# The leading "/" matters: it ignores a reports folder at the top of the
+# project, not the argus/reports/ source code.
+/reports/
+/output/
+/ARGUS-reports/
 *.db
 *.sqlite
 *.sqlite3

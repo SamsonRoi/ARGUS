@@ -1,0 +1,880 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SamsonRoi/ARGUS/blob/main/argus/data/report.schema.json",
+  "title": "ARGUS report",
+  "description": "The JSON report written by ARGUS (format argus-report/1).",
+  "type": "object",
+  "required": [
+    "schema",
+    "generated_at",
+    "argus_version",
+    "redacted",
+    "rules",
+    "scan",
+    "engagement",
+    "summary",
+    "fix_plan",
+    "findings",
+    "accepted_risks",
+    "attack_paths",
+    "hosts",
+    "network",
+    "changes",
+    "analysis_notes",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "argus-report/1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "argus_version": {
+      "type": "string"
+    },
+    "redacted": {
+      "type": "boolean"
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "asset_rules_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "risk_rules_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "scan": {
+      "type": "object",
+      "required": [
+        "id",
+        "profile",
+        "targets",
+        "started_at",
+        "coverage",
+        "warnings",
+        "incomplete"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "profile": {
+          "type": "string"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_seconds": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "nmap_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "incomplete": {
+          "type": "boolean"
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "engagement": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "name",
+        "scope",
+        "hosts_outside_scope"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "authorized_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "starts_on": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ends_on": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hosts_outside_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scan_within_dates": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "headline",
+        "grade",
+        "grade_reason",
+        "hosts_up",
+        "open_ports",
+        "findings",
+        "findings_by_priority",
+        "total_risk"
+      ],
+      "properties": {
+        "headline": {
+          "type": "string"
+        },
+        "grade": {
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "F"
+          ]
+        },
+        "grade_reason": {
+          "type": "string"
+        },
+        "hosts_up": {
+          "type": "integer"
+        },
+        "open_ports": {
+          "type": "integer"
+        },
+        "findings": {
+          "type": "integer"
+        },
+        "findings_by_priority": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "total_risk": {
+          "type": "number"
+        },
+        "accepted_risks": {
+          "type": "integer"
+        },
+        "hosts_with_findings": {
+          "type": "integer"
+        }
+      }
+    },
+    "fix_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rank",
+          "rule",
+          "title",
+          "fix",
+          "findings",
+          "where",
+          "risk_removed"
+        ],
+        "properties": {
+          "rank": {
+            "type": "integer"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "integer"
+          },
+          "where": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "risk_removed": {
+            "type": "number"
+          },
+          "worst_severity": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "attack_paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "why_weak",
+          "basis"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "from_label": {
+            "type": "string"
+          },
+          "why_weak": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "to": {
+            "type": "string"
+          },
+          "to_label": {
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "hosts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/host"
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "subnets",
+        "nodes",
+        "links",
+        "traced_paths",
+        "notes"
+      ],
+      "properties": {
+        "subnets": {
+          "type": "array"
+        },
+        "nodes": {
+          "type": "array"
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "target",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "observed",
+                  "inferred"
+                ]
+              }
+            }
+          }
+        },
+        "traced_paths": {
+          "type": "object"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "changes": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "compared_with": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "new": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "not_rechecked": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "scan_changes": {
+          "type": "array"
+        },
+        "comparison_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "analysis_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "rule",
+        "title",
+        "category",
+        "severity",
+        "base_severity",
+        "priority",
+        "score",
+        "score_factors",
+        "confidence",
+        "scope",
+        "where",
+        "ports",
+        "evidence",
+        "raised_because",
+        "why",
+        "fix",
+        "references",
+        "history"
+      ],
+      "properties": {
+        "number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{12}$"
+        },
+        "rule": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "category_label": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ]
+        },
+        "base_severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ]
+        },
+        "priority": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ]
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "score_factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "host",
+            "network"
+          ]
+        },
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subnet": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "where": {
+          "type": "string"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "port",
+              "protocol"
+            ],
+            "properties": {
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "protocol": {
+                "enum": [
+                  "tcp",
+                  "udp"
+                ]
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "raised_because": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "why": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "related_hosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "history": {
+          "type": "object",
+          "properties": {
+            "first_seen_scan": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "first_seen_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "seen_in_scans": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "streak": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "new_since_baseline": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        },
+        "acceptance": {
+          "type": "object",
+          "required": [
+            "reason",
+            "active"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "accepted_by": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expires_on": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "active": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "required": [
+        "ip",
+        "state",
+        "roles",
+        "criticality",
+        "ports",
+        "trace"
+      ],
+      "properties": {
+        "ip": {
+          "type": "string"
+        },
+        "hostname": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mac": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vendor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "responded_via": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "os": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "name",
+            "accuracy"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "accuracy": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "role",
+              "label",
+              "confidence",
+              "score",
+              "evidence"
+            ],
+            "properties": {
+              "role": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "score": {
+                "type": "integer"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "criticality": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            null
+          ]
+        },
+        "criticality_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "risk_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "port",
+              "protocol",
+              "state"
+            ],
+            "properties": {
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "protocol": {
+                "enum": [
+                  "tcp",
+                  "udp"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "service": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "product": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "extra_info": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "trace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ttl"
+            ],
+            "properties": {
+              "ttl": {
+                "type": "integer"
+              },
+              "ip": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rtt_ms": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "hostname": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

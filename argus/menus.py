@@ -1,6 +1,8 @@
+from argus import __version__
 from argus.history_menu import scan_history_menu
 from argus.modules.topology import build_network_map
 from argus.results_display import show_assets, show_network_map, show_scan_results
+from argus.report_menu import generate_report_flow, open_reports_folder, verify_report_flow
 from argus.risk_menu import risk_analysis_flow
 from argus.scan_menu import run_scan_flow
 from argus.utils.prompts import (
@@ -163,8 +165,19 @@ def about_menu():
     print("Only scan networks you own or have")
     print("explicit permission to assess.")
 
-    print("\nSTATUS")
-    print("ARGUS is currently under development.")
+    print("\nWHAT IT DOES")
+    print("- Finds hosts and open ports (with Nmap)")
+    print("- Works out what each device is")
+    print("- Maps the network and its gateways")
+    print("- Scores risks with evidence and a fix plan")
+    print("- Saves every scan and shows what changed")
+    print("- Writes HTML, PDF, JSON and CSV reports")
+
+    print("\nCOMMAND LINE")
+    print("argus scans | argus report | argus verify")
+    print("Run 'argus --help' for details.")
+
+    print(f"\nVERSION {__version__}")
 
     wait_for_enter("Press Enter to return to the main menu...")
 
@@ -173,9 +186,81 @@ def show_scan_history():
     scan_history_menu(current_session)
 
 
+def report_for_saved_scan():
+    """Pick a saved scan from the history and write a report for it."""
+    from argus.history_menu import ask_scan_id, open_history, show_scan_list
+    from argus.storage.repository import list_scans, load_scan
+
+    connection = open_history()
+
+    if connection is None:
+        wait_for_enter("Press Enter to continue...")
+        return
+
+    try:
+        summaries = list_scans(connection, limit=20)
+
+        if not summaries:
+            print("\nNo scans have been saved yet. Run a scan first.")
+            return
+
+        show_scan_list(summaries)
+        scan_id = ask_scan_id(summaries, "Which scan do you want a report for?")
+
+        if scan_id is None:
+            return
+
+        summary = next(item for item in summaries if item.id == scan_id)
+        result = load_scan(connection, scan_id)
+    finally:
+        connection.close()
+
+    generate_report_flow(result, scan_id=scan_id, engagement_id=summary.engagement_id)
+
+
 def show_reports():
-    print("\nReport generation is not built yet.")
-    wait_for_enter("Press Enter to return to the main menu...")
+    from argus.reports.generate import default_reports_dir
+
+    while True:
+        print("\nREPORTS")
+        print("-" * 35)
+        print(f"Reports are saved in: {default_reports_dir()}")
+
+        if current_session.scan_result is not None:
+            saved = f" (scan #{current_session.scan_id})" if current_session.scan_id else ""
+            print(f"Current session scan: {current_session.scan_result.profile}{saved}")
+        else:
+            print("Current session scan: none yet")
+
+        print("\n1. Report for the current session's scan")
+        print("2. Report for a saved scan")
+        print("3. Verify a report file")
+        print("4. Open the reports folder")
+        print("0. Back")
+
+        choice = get_menu_choice("Your next move:", [0, 1, 2, 3, 4])
+
+        if choice == 0:
+            return
+
+        if choice == 1:
+            if current_session.scan_result is None:
+                print("\nNo scan has been run in this session yet. Choose 2 to report on a saved scan.")
+            else:
+                generate_report_flow(
+                    current_session.scan_result,
+                    scan_id=current_session.scan_id,
+                    engagement_id=current_session.engagement_id,
+                )
+
+        elif choice == 2:
+            report_for_saved_scan()
+
+        elif choice == 3:
+            verify_report_flow()
+
+        else:
+            open_reports_folder()
 
 
 def current_session_menu():
@@ -211,12 +296,13 @@ def current_session_menu():
             print("3. View Assets")
             print("4. Network Map")
             print("5. Risk Analysis")
-            print("6. Clear Session")
+            print("6. Generate Report")
+            print("7. Clear Session")
             print("0. Back")
 
             choice = get_menu_choice(
                 "Your next move:",
-                [0, 1, 2, 3, 4, 5, 6]
+                [0, 1, 2, 3, 4, 5, 6, 7]
             )
 
             if choice == 1:
@@ -233,9 +319,16 @@ def current_session_menu():
                     )
                     wait_for_enter("Press Enter to continue...")
 
-            elif choice in (3, 4, 5):
+            elif choice in (3, 4, 5, 6):
                 if current_session.scan_result is None:
                     print("\nNo scan has been run in this session yet.")
+
+                elif choice == 6:
+                    generate_report_flow(
+                        current_session.scan_result,
+                        scan_id=current_session.scan_id,
+                        engagement_id=current_session.engagement_id,
+                    )
 
                 elif choice == 5:
                     risk_analysis_flow(
@@ -252,7 +345,7 @@ def current_session_menu():
                     show_network_map(build_network_map(current_session.scan_result))
                     wait_for_enter("Press Enter to continue...")
 
-            elif choice == 6:
+            elif choice == 7:
                 current_session.clear()
                 print("\nSession cleared successfully.")
 

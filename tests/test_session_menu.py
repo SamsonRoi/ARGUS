@@ -41,17 +41,17 @@ def test_assets_and_map_open_for_the_last_scan(monkeypatch):
 
 def test_assets_without_a_scan_explain_why(monkeypatch, capsys):
     monkeypatch.setattr(menus, "current_session", active_session(with_scan=False))
-    feed(monkeypatch, [3, 4, 5, 0])
+    feed(monkeypatch, [3, 4, 5, 6, 0])
 
     menus.current_session_menu()
 
-    assert capsys.readouterr().out.count("No scan has been run in this session yet.") == 3
+    assert capsys.readouterr().out.count("No scan has been run in this session yet.") == 4
 
 
-def test_clear_session_is_option_six(monkeypatch):
+def test_clear_session_is_option_seven(monkeypatch):
     session = active_session()
     monkeypatch.setattr(menus, "current_session", session)
-    feed(monkeypatch, [6, 0])
+    feed(monkeypatch, [7, 0])
 
     menus.current_session_menu()
 

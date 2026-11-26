@@ -631,3 +631,86 @@ def acceptances_by_fingerprint(connection: sqlite3.Connection) -> dict:
         )
         for record in reversed(list_acceptances(connection))
     }
+
+
+# ---------- generated reports ----------
+
+@dataclass
+class ReportRecord:
+    id: int
+    scan_id: int | None
+    format: str
+    path: str
+    sha256: str
+    size: int
+    redacted: bool
+    created_at: datetime
+
+
+def _report_from_row(row) -> ReportRecord:
+    return ReportRecord(
+        id=row["id"],
+        scan_id=row["scan_id"],
+        format=row["format"],
+        path=row["path"],
+        sha256=row["sha256"],
+        size=row["size"],
+        redacted=bool(row["redacted"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def record_report(
+    connection: sqlite3.Connection,
+    *,
+    scan_id: int | None,
+    format: str,
+    path: str,
+    sha256: str,
+    size: int,
+    redacted: bool,
+) -> int:
+    """Remember a generated report file and its SHA-256, for verifying later.
+
+    The fingerprint is always kept, even if the scan has since been deleted.
+    """
+    if scan_id is not None and connection.execute(
+        "SELECT 1 FROM scans WHERE id = ?", (scan_id,)
+    ).fetchone() is None:
+        scan_id = None
+
+    with connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO reports (scan_id, format, path, sha256, size, redacted, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (scan_id, format, path, sha256, size, int(redacted), _now_text()),
+        )
+    return cursor.lastrowid
+
+
+def find_reports_by_hash(connection: sqlite3.Connection, sha256: str) -> list[ReportRecord]:
+    rows = connection.execute(
+        "SELECT * FROM reports WHERE sha256 = ? ORDER BY id", (sha256.lower(),)
+    ).fetchall()
+    return [_report_from_row(row) for row in rows]
+
+
+def find_reports_by_path(connection: sqlite3.Connection, path: str) -> list[ReportRecord]:
+    rows = connection.execute(
+        "SELECT * FROM reports WHERE path = ? ORDER BY id DESC", (path,)
+    ).fetchall()
+    return [_report_from_row(row) for row in rows]
+
+
+def list_reports(connection: sqlite3.Connection, limit: int | None = None) -> list[ReportRecord]:
+    """Every report file ARGUS has made, newest first."""
+    query = "SELECT * FROM reports ORDER BY id DESC"
+    params: tuple = ()
+
+    if limit is not None:
+        query += " LIMIT ?"
+        params = (limit,)
+
+    return [_report_from_row(row) for row in connection.execute(query, params).fetchall()]
