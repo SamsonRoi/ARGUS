@@ -1,4 +1,5 @@
 
+from argus import __version__
 import random
 import textwrap
 from pathlib import Path
@@ -298,7 +299,7 @@ def _get_banner_pool() -> list[str]:
 
 
 def show_banner(
-    version: str = "0.1.0",
+    version: str = __version__,
     module_count: Optional[int] = None,
     clear: bool = True,
 ) -> None:

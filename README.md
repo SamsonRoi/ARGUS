@@ -14,7 +14,7 @@ It helps security professionals discover network hosts, identify open ports, det
 
 ## Current Status
 
-ARGUS is under active development.
+**Version 1.0.0**, the first release. See [CHANGELOG.md](CHANGELOG.md) for what is in it.
 
 ### Implemented Features
 
@@ -80,21 +80,39 @@ ARGUS is under active development.
 ## Requirements
 
 - Python 3.10 or newer.
-- Nmap.
-- Git.
+- [Nmap](https://nmap.org/download.html), on your PATH.
+- For PDF reports: Microsoft Edge or Google Chrome. Edge comes with Windows. Without either, ARGUS uses a basic PDF layout made with `reportlab`.
+- Administrator/root rights for some scan types: UDP, OS estimation, ARP/ICMP discovery and traceroute.
 
 ---
 
 ## Installation
 
-### 1. Clone the repository
+### Install the 1.0.0 release
+
+Download `argus-1.0.0-py3-none-any.whl` from the [1.0.0 release page](https://github.com/SamsonRoi/ARGUS/releases/tag/v1.0.0), then install it:
+
+```bash
+pip install argus-1.0.0-py3-none-any.whl
+argus --version
+```
+
+You can also install the release straight from GitHub:
+
+```bash
+pip install "git+https://github.com/SamsonRoi/ARGUS.git@v1.0.0"
+```
+
+### Install from source, for development
+
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/SamsonRoi/ARGUS.git
 cd ARGUS
 ```
 
-### 2. Create a virtual environment
+#### 2. Create a virtual environment
 
 **Windows:**
 
@@ -110,7 +128,7 @@ python3 -m venv venv
 source venv/bin/activate
 ```
 
-### 3. Install ARGUS
+#### 3. Install ARGUS
 
 ```bash
 pip install -e .
@@ -565,6 +583,21 @@ ARGUS is being developed in stages:
 8. Reports: JSON, CSV, HTML and PDF, with redaction and tamper evidence. **Done**
 
 Next version: enforcing the authorized scope recorded in engagements.
+
+---
+
+## Releasing a new version
+
+1. Change `__version__` in `argus/__init__.py`. Everything else reads it from there.
+2. Add a section for the new version at the top of `CHANGELOG.md`.
+3. Commit and push, then tag the version:
+
+   ```bash
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
+
+GitHub Actions then runs the tests on Python 3.10 and 3.13, checks the tag matches the version, builds the package, and publishes the release with the changelog notes and the installable files.
 
 ---
 
