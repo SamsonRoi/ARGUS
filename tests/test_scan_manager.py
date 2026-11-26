@@ -39,6 +39,7 @@ def patch_stages(
     udp=(),
     services=(),
     os_hosts=(),
+    traces=(),
 ):
     """Replace every scanning stage with a fake. Returns a dict of what was called."""
     calls = {}
@@ -79,6 +80,7 @@ def patch_stages(
     monkeypatch.setattr(scan_manager, "scan_udp_ports", stage("udp", udp))
     monkeypatch.setattr(scan_manager, "detect_services", stage("services", services))
     monkeypatch.setattr(scan_manager, "estimate_os", stage("os", os_hosts))
+    monkeypatch.setattr(scan_manager, "trace_routes", stage("trace", traces))
 
     return calls
 
@@ -416,3 +418,90 @@ def test_real_pipeline_on_localhost(ssh_banner_port):
     assert port.product == "OpenSSH"
     assert result.finished_at is not None
     assert result.nmap_version
+
+# ---------- traceroute and classification ----------
+
+def test_traceroute_option_adds_a_stage():
+    options = ScanOptions(profile_key="quick", traceroute=True)
+
+    assert options.stage_count == 3
+    assert options.describe() == "Quick TCP + traceroute"
+
+
+def test_traceroute_attaches_paths_to_known_hosts_only(monkeypatch):
+    from argus.modules.models import TraceHop
+
+    path = [TraceHop(1, "10.0.0.1"), TraceHop(2, "10.0.0.5")]
+    calls = patch_stages(
+        monkeypatch,
+        tcp=[host("10.0.0.5", PortInfo(22))],
+        traces=[HostInfo("10.0.0.5", trace=path), HostInfo("10.9.9.9", trace=path)],
+    )
+
+    result = run(["10.0.0.5"], ScanOptions(traceroute=True))
+
+    assert "trace" in calls
+    assert result.get_host("10.0.0.5").trace == path
+    assert result.get_host("10.9.9.9") is None
+
+
+def test_traceroute_is_skipped_without_privileges(monkeypatch):
+    calls = patch_stages(monkeypatch, tcp=[host("10.0.0.5", PortInfo(22))])
+
+    result = run_scan_pipeline(
+        ["10.0.0.5"], ScanOptions(traceroute=True), privileged=False
+    )
+
+    assert "trace" not in calls
+    assert scan_manager.TRACEROUTE_SKIPPED in result.warnings
+
+
+def test_traceroute_failure_is_a_warning(monkeypatch):
+    patch_stages(
+        monkeypatch,
+        tcp=[host("10.0.0.5", PortInfo(22))],
+        traces=ScanFailedError("no route"),
+    )
+
+    result = run(["10.0.0.5"], ScanOptions(traceroute=True))
+
+    assert any(warning.startswith("Traceroute failed") for warning in result.warnings)
+    assert result.get_host("10.0.0.5").open_ports
+
+
+def test_every_scan_is_classified(monkeypatch):
+    patch_stages(monkeypatch, tcp=[host("10.0.0.5", PortInfo(9100), PortInfo(515))])
+
+    result = run(["10.0.0.5"])
+
+    printer = result.get_host("10.0.0.5")
+    assert result.classifier_version is not None
+    assert printer.primary_role.role == "printer"
+    assert printer.criticality == "medium"
+
+
+def test_cancelled_scans_are_still_classified(monkeypatch):
+    patch_stages(
+        monkeypatch,
+        tcp=[host("10.0.0.5", PortInfo(3306))],
+        udp=KeyboardInterrupt(),
+    )
+
+    result = run(["10.0.0.5"], ScanOptions(udp_scan=True))
+
+    assert CANCELLED_WARNING in result.warnings
+    assert result.get_host("10.0.0.5").primary_role.role == "database_server"
+
+
+def test_broken_rules_become_a_warning(monkeypatch):
+    from argus.modules.classify import RulesError
+
+    def broken(result):
+        raise RulesError("bad rules")
+
+    monkeypatch.setattr(scan_manager, "classify_result", broken)
+    patch_stages(monkeypatch, tcp=[host("10.0.0.5", PortInfo(22))])
+
+    result = run(["10.0.0.5"])
+
+    assert "Asset classification failed: bad rules" in result.warnings

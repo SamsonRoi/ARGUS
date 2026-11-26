@@ -154,7 +154,7 @@ def test_compare_two_scans_from_the_menu(monkeypatch, capsys, two_scans):
     older, newer = two_scans
     quiet(monkeypatch)
     # menu: compare -> pick newer first, then older -> back out
-    feed(monkeypatch, "get_menu_choice", [2, newer, older, 0])
+    feed(monkeypatch, "get_menu_choice", [3, newer, older, 0])
 
     history_menu.scan_history_menu(make_session())
 
@@ -169,7 +169,7 @@ def test_compare_two_scans_from_the_menu(monkeypatch, capsys, two_scans):
 def test_baseline_then_compare_latest(monkeypatch, capsys, two_scans):
     older, newer = two_scans
     quiet(monkeypatch)
-    feed(monkeypatch, "get_menu_choice", [4, older, 3, 0])
+    feed(monkeypatch, "get_menu_choice", [5, older, 4, 0])
 
     history_menu.scan_history_menu(make_session())
 
@@ -181,7 +181,7 @@ def test_baseline_then_compare_latest(monkeypatch, capsys, two_scans):
 
 def test_compare_latest_without_baseline(monkeypatch, capsys, two_scans):
     quiet(monkeypatch)
-    feed(monkeypatch, "get_menu_choice", [3, 0])
+    feed(monkeypatch, "get_menu_choice", [4, 0])
 
     history_menu.scan_history_menu(make_session())
 
@@ -191,7 +191,7 @@ def test_compare_latest_without_baseline(monkeypatch, capsys, two_scans):
 def test_delete_asks_first(monkeypatch, capsys, two_scans):
     older, newer = two_scans
     quiet(monkeypatch)
-    feed(monkeypatch, "get_menu_choice", [5, older, 5, older, 0])
+    feed(monkeypatch, "get_menu_choice", [6, older, 6, older, 0])
     feed(monkeypatch, "ask_yes_no", [False, True])
 
     history_menu.scan_history_menu(make_session())
@@ -207,6 +207,7 @@ def test_view_a_saved_scan(monkeypatch, two_scans):
     quiet(monkeypatch)
     shown = []
     monkeypatch.setattr(history_menu, "show_scan_results", lambda result, **k: shown.append(result))
+    monkeypatch.setattr(history_menu, "show_assets", lambda result, **k: None)
     feed(monkeypatch, "get_menu_choice", [1, older, 0])
 
     history_menu.scan_history_menu(make_session())
@@ -217,7 +218,7 @@ def test_view_a_saved_scan(monkeypatch, two_scans):
 def test_create_and_choose_an_engagement(monkeypatch, capsys):
     quiet(monkeypatch)
     session = make_session()
-    feed(monkeypatch, "get_menu_choice", [6, 1, 0, 0])
+    feed(monkeypatch, "get_menu_choice", [7, 1, 0, 0])
     feed(monkeypatch, "get_text_input", ["Office LAN"])
     # authorized by, scope (Enter = session targets), start, end, notes
     feed(monkeypatch, "get_optional_text", ["R. Kumar", None, "2026-12-01", None, None])
@@ -253,3 +254,15 @@ def test_comparison_display_escapes_untrusted_text():
     show_comparison(compare_scans(older, newer), "#1", "#2", output=console)
 
     assert "[bold]Evil[/bold] 1" in console.export_text()
+
+
+def test_network_map_of_a_saved_scan(monkeypatch, two_scans):
+    older, _newer = two_scans
+    quiet(monkeypatch)
+    maps = []
+    monkeypatch.setattr(history_menu, "show_network_map", lambda network_map: maps.append(network_map))
+    feed(monkeypatch, "get_menu_choice", [2, older, 0])
+
+    history_menu.scan_history_menu(make_session())
+
+    assert maps[0].subnets[0].host_ips == ["10.0.0.5"]

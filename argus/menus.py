@@ -1,5 +1,6 @@
 from argus.history_menu import scan_history_menu
-from argus.results_display import show_scan_results
+from argus.modules.topology import build_network_map
+from argus.results_display import show_assets, show_network_map, show_scan_results
 from argus.scan_menu import run_scan_flow
 from argus.utils.prompts import (
     ask_yes_no,
@@ -206,12 +207,14 @@ def current_session_menu():
 
             print("\n1. Run Scan")
             print("2. View Last Results")
-            print("3. Clear Session")
+            print("3. View Assets")
+            print("4. Network Map")
+            print("5. Clear Session")
             print("0. Back")
 
             choice = get_menu_choice(
                 "Your next move:",
-                [0, 1, 2, 3]
+                [0, 1, 2, 3, 4, 5]
             )
 
             if choice == 1:
@@ -228,7 +231,19 @@ def current_session_menu():
                     )
                     wait_for_enter("Press Enter to continue...")
 
-            elif choice == 3:
+            elif choice in (3, 4):
+                if current_session.scan_result is None:
+                    print("\nNo scan has been run in this session yet.")
+
+                elif choice == 3:
+                    show_assets(current_session.scan_result)
+                    wait_for_enter("Press Enter to continue...")
+
+                else:
+                    show_network_map(build_network_map(current_session.scan_result))
+                    wait_for_enter("Press Enter to continue...")
+
+            elif choice == 5:
                 current_session.clear()
                 print("\nSession cleared successfully.")
 

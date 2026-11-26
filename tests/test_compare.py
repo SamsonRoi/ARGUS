@@ -218,3 +218,29 @@ def test_hosts_that_are_not_up_are_ignored():
     comparison = compare_scans(scan(down), scan())
 
     assert comparison.events == []
+
+
+def test_role_change_is_reported_for_believable_roles():
+    from argus.modules.compare import ROLE_CHANGED
+    from argus.modules.models import RoleMatch
+
+    old = host("10.0.0.5", 80)
+    new = host("10.0.0.5", 80)
+    old.roles = [RoleMatch("web_server", "Web server", "medium", 45)]
+    new.roles = [RoleMatch("camera", "Camera or video recorder", "high", 75)]
+
+    comparison = compare_scans(scan(old), scan(new))
+
+    assert kinds(comparison) == [(ROLE_CHANGED, "10.0.0.5", None)]
+    assert "Web server to Camera or video recorder" in comparison.events[0].summary
+
+
+def test_low_confidence_role_flips_are_ignored():
+    from argus.modules.models import RoleMatch
+
+    old = host("10.0.0.5", 80)
+    new = host("10.0.0.5", 80)
+    old.roles = [RoleMatch("web_server", "Web server", "low", 30)]
+    new.roles = [RoleMatch("iot_device", "IoT device", "high", 75)]
+
+    assert compare_scans(scan(old), scan(new)).events == []

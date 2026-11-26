@@ -10,8 +10,16 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
 
+from argus.modules.classify import RulesError, classify_result
 from argus.modules.evidence import ScanEvidence, format_port_list, parse_port_list
-from argus.modules.models import HostInfo, OSGuess, PortInfo, ScanResult
+from argus.modules.models import (
+    HostInfo,
+    OSGuess,
+    PortInfo,
+    RoleMatch,
+    ScanResult,
+    TraceHop,
+)
 from argus.storage.database import StorageError
 
 
@@ -141,8 +149,8 @@ def save_scan(
                 """
                 INSERT INTO scans
                     (engagement_id, kind, profile, targets, started_at,
-                     finished_at, nmap_version, incomplete)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     finished_at, nmap_version, incomplete, classifier_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     engagement_id,
@@ -153,6 +161,7 @@ def save_scan(
                     result.finished_at.isoformat() if result.finished_at else None,
                     result.nmap_version,
                     int(incomplete),
+                    result.classifier_version,
                 ),
             )
             scan_id = cursor.lastrowid
@@ -162,8 +171,9 @@ def save_scan(
                     """
                     INSERT INTO hosts
                         (scan_id, ip, state, hostname, mac, vendor,
-                         discovery_method, os_name, os_accuracy)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         discovery_method, os_name, os_accuracy,
+                         criticality, criticality_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         scan_id,
@@ -175,8 +185,41 @@ def save_scan(
                         host.discovery_method,
                         host.os_guess.name if host.os_guess else None,
                         host.os_guess.accuracy if host.os_guess else None,
+                        host.criticality,
+                        host.criticality_reason,
                     ),
                 ).lastrowid
+
+                connection.executemany(
+                    """
+                    INSERT INTO host_roles
+                        (host_id, position, role, label, confidence, score, reasons)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            host_id,
+                            position,
+                            match.role,
+                            match.label,
+                            match.confidence,
+                            match.score,
+                            json.dumps(match.reasons),
+                        )
+                        for position, match in enumerate(host.roles)
+                    ],
+                )
+
+                connection.executemany(
+                    """
+                    INSERT INTO trace_hops (host_id, ttl, ip, rtt_ms, hostname)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (host_id, hop.ttl, hop.ip, hop.rtt_ms, hop.hostname)
+                        for hop in host.trace
+                    ],
+                )
 
                 connection.executemany(
                     """
@@ -316,6 +359,7 @@ def load_scan(
             datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None
         ),
         nmap_version=row["nmap_version"],
+        classifier_version=row["classifier_version"],
     )
 
     host_rows = connection.execute(
@@ -339,7 +383,36 @@ def load_scan(
             vendor=host_row["vendor"],
             discovery_method=host_row["discovery_method"],
             os_guess=os_guess,
+            criticality=host_row["criticality"],
+            criticality_reason=host_row["criticality_reason"],
         )
+
+        host.roles = [
+            RoleMatch(
+                role=role_row["role"],
+                label=role_row["label"],
+                confidence=role_row["confidence"],
+                score=role_row["score"],
+                reasons=json.loads(role_row["reasons"] or "[]"),
+            )
+            for role_row in connection.execute(
+                "SELECT * FROM host_roles WHERE host_id = ? ORDER BY position",
+                (host_row["id"],),
+            )
+        ]
+
+        host.trace = [
+            TraceHop(
+                ttl=hop_row["ttl"],
+                ip=hop_row["ip"],
+                rtt_ms=hop_row["rtt_ms"],
+                hostname=hop_row["hostname"],
+            )
+            for hop_row in connection.execute(
+                "SELECT * FROM trace_hops WHERE host_id = ? ORDER BY ttl",
+                (host_row["id"],),
+            )
+        ]
 
         for port_row in connection.execute(
             "SELECT * FROM ports WHERE host_id = ? ORDER BY protocol, port",
@@ -384,6 +457,14 @@ def load_scan(
             )
 
     result.evidence = evidence
+
+    # Scans saved before classification existed are classified when opened.
+    # This is not written back, so the stored record stays as it was.
+    if result.classifier_version is None:
+        try:
+            classify_result(result)
+        except RulesError:
+            pass
 
     return result
 

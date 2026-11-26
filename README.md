@@ -47,12 +47,17 @@ ARGUS is under active development.
   - Coverage-aware comparison of any two scans.
   - Baselines, to answer "what changed since then?".
   - Engagements, to record who authorized the work and what is in scope.
+- Asset classification:
+  - Every host gets its likely roles (router, printer, database server and so on).
+  - Each role has a confidence level and the evidence behind it.
+  - Each host gets a criticality level.
+- Network map:
+  - Hosts grouped by subnet under their gateway.
+  - Optional traceroute, so links can be marked observed or inferred.
 
 ### Planned Features
 
 - Improved service enumeration.
-- Asset classification.
-- Network topology mapping.
 - Evidence-based risk analysis and prioritization.
 - Report generation in JSON, CSV, HTML, and PDF.
 
@@ -144,6 +149,7 @@ Additional scan options include:
 - UDP scanning.
 - Service and version detection.
 - Operating system estimation.
+- Traceroute, for observed links in the network map.
 - Discovery method selection.
 
 Some discovery methods and scan types may require elevated privileges.
@@ -175,6 +181,7 @@ ARGUS records exactly which ports each scan checked, and only reports what it ca
 | Address changed          | Same MAC address, new IP: the same device moved.                        |
 | Service changed          | The service or version on an open port changed.                         |
 | OS estimate changed      | The operating system estimate changed.                                  |
+| Role changed             | The host's likely role changed (medium or high confidence only).        |
 
 Hosts are matched by MAC address when both scans saw one, and by IP address otherwise.
 
@@ -187,6 +194,43 @@ Hosts are matched by MAC address when both scans saw one, and by IP address othe
 ### Engagements
 
 An engagement records who authorized the work, the authorized scope, and the dates. Scans are filed under the current engagement. ARGUS stores this information but does not enforce the scope yet.
+
+---
+
+## Assets and Network Map
+
+After a scan, open **Current Session**, then **View Assets** or **Network Map**. Saved scans have both under **Scan History**.
+
+### Asset classification
+
+ARGUS labels each host with the roles its evidence points to, for example:
+
+| Host         | Likely role              | Evidence                                     | Criticality |
+| ------------ | ------------------------ | -------------------------------------------- | ----------- |
+| 192.168.1.20 | Printer (high)           | ports 9100/tcp and 631/tcp open              | Medium      |
+| 192.168.1.5  | Domain controller (high) | ports 88/tcp and 389/tcp open, 3268/tcp open | High        |
+
+- Clues come from open ports, software and versions, MAC vendor, OS estimate, hostname, and traceroute.
+- Each clue has a weight. The total gives the confidence:
+  - **high**: 70 or more.
+  - **medium**: 40 to 69.
+  - **low**: 20 to 39.
+- Some clues count against a role. For example, a Windows Server OS counts against "Workstation".
+- Matching is whole-word, so "iOS" does not match "BIOS".
+- A host with too little evidence is shown as **Unknown**. ARGUS does not guess.
+- **Criticality** comes from the most critical medium- or high-confidence role. Unknown hosts are treated as medium. Step 7's risk scoring uses this level.
+- The rules are in [`argus/data/asset_rules.toml`](argus/data/asset_rules.toml). You can add or tune roles without changing code. ARGUS checks the file when it loads, and reports mistakes clearly.
+
+### Network map
+
+- Hosts are grouped into the subnets that were scanned. A host scanned on its own is placed in an assumed /24, and the map says so.
+- Each subnet's gateway is found in one of two ways:
+  - **observed**: the first hop of a traceroute.
+  - **inferred**: a host classified as a router.
+- Every link is marked as one of:
+  - **observed**: traceroute saw traffic pass that way.
+  - **inferred**: worked out from addresses only.
+- Traceroute needs Administrator/root and sends extra probes. It is off unless you choose it.
 
 ---
 
@@ -204,8 +248,13 @@ ARGUS/
 │   ├── history_menu.py
 │   ├── results_display.py
 │   │
+│   ├── data/
+│   │   ├── __init__.py
+│   │   └── asset_rules.toml
+│   │
 │   ├── modules/
 │   │   ├── __init__.py
+│   │   ├── classify.py
 │   │   ├── compare.py
 │   │   ├── discovery.py
 │   │   ├── evidence.py
@@ -215,7 +264,9 @@ ARGUS/
 │   │   ├── port_scan.py
 │   │   ├── scan_manager.py
 │   │   ├── service_detect.py
-│   │   └── os_detect.py
+│   │   ├── os_detect.py
+│   │   ├── topology.py
+│   │   └── traceroute.py
 │   │
 │   ├── storage/
 │   │   ├── __init__.py
@@ -262,6 +313,8 @@ python -m pytest -v
 - Vulnerability exploitation and NSE-based vulnerability scanning are not currently part of ARGUS.
 - Comparisons can only report changes in ports that both scans checked.
 - Engagement scope is recorded but not yet enforced.
+- Asset roles are estimates from the evidence a scan collected, not confirmed facts.
+- Without traceroute, the network map's links are inferred from addresses and may not match the real wiring. Nmap cannot trace the local machine itself.
 - Report generation is a planned feature.
 
 ---
@@ -275,7 +328,7 @@ ARGUS is being developed in stages:
 3. Target parsing, validation, and scope checks. **Done**
 4. Nmap engine: host discovery, port scanning, service and OS detection. **Done**
 5. SQLite database, scan history, and comparing scans. **Done**
-6. Asset classification and a network graph.
+6. Asset classification and a network graph. **Done**
 7. The risk analysis engine.
 8. Reports: JSON and CSV first, then HTML and PDF.
 

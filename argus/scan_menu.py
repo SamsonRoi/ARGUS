@@ -17,7 +17,11 @@ from argus.modules.nmap_runner import (
     is_privileged,
 )
 from argus.modules.port_scan import TCP_PROFILES, validate_port_spec
-from argus.modules.scan_manager import ScanOptions, run_scan_pipeline
+from argus.modules.scan_manager import (
+    ScanOptions,
+    classify_scan,
+    run_scan_pipeline,
+)
 from argus.results_display import show_scan_results
 from argus.utils.prompts import (
     ask_yes_no,
@@ -154,6 +158,9 @@ def ask_scan_options(
     os_estimation = ask_yes_no(
         f"Estimate operating systems?{admin_note}"
     )
+    traceroute = ask_yes_no(
+        f"Trace network paths for the network map?{admin_note}"
+    )
 
     discovery_methods = None
 
@@ -169,6 +176,7 @@ def ask_scan_options(
         service_detection=service_detection,
         udp_scan=udp_scan,
         os_estimation=os_estimation,
+        traceroute=traceroute,
         discovery_methods=discovery_methods,
     )
 
@@ -275,6 +283,8 @@ def run_discovery_flow(session) -> None:
                 methods=methods,
             )
 
+        classify_scan(result)
+
     except KeyboardInterrupt:
         console.print(
             "\n[yellow]Host discovery was cancelled. "
@@ -312,6 +322,12 @@ def show_scan_plan(targets: list[str], options: ScanOptions) -> None:
         print(
             "\nNote: UDP scanning and OS estimation need Administrator. "
             "Without it, those steps will fail and be reported as warnings."
+        )
+
+    if not privileged and options.traceroute:
+        print(
+            "\nNote: traceroute needs Administrator, so it will be skipped. "
+            "The network map will only show inferred links."
         )
 
 

@@ -9,6 +9,7 @@ import ipaddress
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from argus.modules.classify import RulesError, classify_result
 from argus.modules.discovery import discover_hosts
 from argus.modules.models import HostInfo, ScanResult
 from argus.modules.nmap_runner import (
@@ -28,6 +29,7 @@ from argus.modules.port_scan import (
     validate_port_spec,
 )
 from argus.modules.service_detect import detect_services
+from argus.modules.traceroute import trace_routes
 
 
 CANCELLED_WARNING = (
@@ -40,6 +42,11 @@ RANGE_WARNING = (
 )
 
 PORT_SCAN_REASON = "Responded to port scan"
+
+TRACEROUTE_SKIPPED = (
+    "Traceroute was skipped: it needs Administrator/root rights. "
+    "The network map will only show inferred links."
+)
 
 # Called as progress(step_number, total_steps, label) before each stage.
 ProgressCallback = Callable[[int, int, str], None]
@@ -55,6 +62,7 @@ class ScanOptions:
     udp_scan: bool = False
     os_estimation: bool = False
     discovery_methods: list[str] | None = None
+    traceroute: bool = False
 
     def __post_init__(self):
         if self.profile_key not in TCP_PROFILES:
@@ -84,12 +92,20 @@ class ScanOptions:
         if self.os_estimation:
             parts.append("OS estimation")
 
+        if self.traceroute:
+            parts.append("traceroute")
+
         return " + ".join(parts)
 
     @property
     def stage_count(self) -> int:
         """Discovery and the TCP scan always run. Each extra adds one stage."""
-        extras = (self.udp_scan, self.service_detection, self.os_estimation)
+        extras = (
+            self.udp_scan,
+            self.service_detection,
+            self.os_estimation,
+            self.traceroute,
+        )
         return 2 + sum(extras)
 
 
@@ -125,6 +141,9 @@ def merge_host(
         for name in ("hostname", "mac", "vendor", "discovery_method", "os_guess"):
             if getattr(host, name) is None and getattr(new, name) is not None:
                 setattr(host, name, getattr(new, name))
+
+        if new.trace and not host.trace:
+            host.trace = list(new.trace)
 
         if host.state != "up" and new.state == "up":
             host.state = "up"
@@ -170,6 +189,17 @@ def _run_stage(result: ScanResult, name: str, action):
     except ScannerError as error:
         result.warnings.append(f"{name} failed: {error}")
         return None
+
+
+def classify_scan(result: ScanResult) -> ScanResult:
+    """Label every host with its likely role. A broken rules file never
+    loses the scan: it becomes a warning instead."""
+    try:
+        classify_result(result)
+    except RulesError as error:
+        result.warnings.append(f"Asset classification failed: {error}")
+
+    return result
 
 
 def run_scan_pipeline(
@@ -311,6 +341,28 @@ def run_scan_pipeline(
                         include_ports=False,
                     )
 
+            # ----- Optional: network paths -----
+            if options.traceroute:
+                announce("Tracing network paths")
+
+                if not privileged:
+                    result.warnings.append(TRACEROUTE_SKIPPED)
+                else:
+                    found = _run_stage(
+                        result,
+                        "Traceroute",
+                        lambda: trace_routes(scan_ips, evidence=result.evidence),
+                    )
+
+                    # Traces never add hosts: only hosts already found get one.
+                    for host in found or []:
+                        merge_host(
+                            result,
+                            host,
+                            add_if_missing=False,
+                            include_ports=False,
+                        )
+
     except (KeyboardInterrupt, ScanInterruptedError):
         result.warnings.append(CANCELLED_WARNING)
 
@@ -319,6 +371,7 @@ def run_scan_pipeline(
             host.discovery_method = PORT_SCAN_REASON
 
     result.hosts.sort(key=lambda host: ipaddress.ip_address(host.ip))
+    classify_scan(result)
     result.finish()
 
     return result

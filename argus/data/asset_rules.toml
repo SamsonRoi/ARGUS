@@ -1,0 +1,540 @@
+# ARGUS asset classification rules
+#
+# Each [[role]] describes one kind of device or service. Each [[role.signal]]
+# is one clue, with a weight. A host's score for a role is the sum of the
+# weights of the clues that match it, kept between 0 and 100:
+#
+#   70 or more -> high confidence
+#   40 to 69   -> medium confidence
+#   20 to 39   -> low confidence ("possible")
+#   below 20   -> not shown
+#
+# A clue has exactly ONE of these tests:
+#
+#   tcp_any        any of these TCP ports is open
+#   tcp_all        all of these TCP ports are open
+#   udp_any        any of these UDP ports is open (open|filtered does not count)
+#   service_any    a port's service name contains one of these words
+#   product_any    a port's product or version text contains one of these words
+#   vendor_any     the MAC vendor contains one of these words
+#   os_any         the OS estimate contains one of these words
+#   hostname_any   the hostname contains one of these words
+#   ip_last_octet  the address ends in one of these numbers (IPv4 only)
+#   gateway        true: the host was the first hop in a traceroute
+#   no_open_ports  true: no open ports were found
+#
+# Optional: "note" adds a short explanation to the evidence, and a negative
+# weight counts against the role. Word matches ignore upper/lower case.
+#
+# Increase `version` whenever the rules change, so saved scans record which
+# rules labelled them.
+
+version = 1
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "router"
+label = "Router or gateway"
+criticality = "high"
+
+  [[role.signal]]
+  gateway = true
+  weight = 55
+  note = "traffic to other hosts passes through it"
+
+  [[role.signal]]
+  vendor_any = ["Cisco", "Juniper", "MikroTik", "Routerboard", "Ubiquiti", "TP-Link", "Netgear", "Fortinet", "Palo Alto", "Aruba", "Zyxel", "D-Link", "Huawei Technologies", "ASUSTek", "Linksys", "SonicWall", "Sophos", "WatchGuard", "Arcadyan", "Technicolor", "Sagemcom"]
+  weight = 35
+  note = "networking equipment maker"
+
+  [[role.signal]]
+  os_any = ["RouterOS", "Cisco IOS", "IOS XE", "JunOS", "FortiOS", "PAN-OS", "OpenWrt", "DD-WRT", "pfSense", "OPNsense", "EdgeOS", "VyOS"]
+  weight = 45
+
+  [[role.signal]]
+  product_any = ["MikroTik", "RouterOS", "Cisco IOS", "dnsmasq", "MiniUPnP", "lighttpd/ubnt", "Boa HTTPd", "GoAhead"]
+  weight = 25
+
+  [[role.signal]]
+  tcp_any = [179]
+  weight = 30
+  note = "BGP routing"
+
+  [[role.signal]]
+  ip_last_octet = [1, 254]
+  weight = 15
+  note = "an address commonly given to gateways"
+
+  [[role.signal]]
+  udp_any = [161]
+  weight = 10
+  note = "SNMP management"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "domain_controller"
+label = "Domain controller"
+criticality = "high"
+
+  [[role.signal]]
+  tcp_all = [88, 389]
+  weight = 55
+  note = "Kerberos and LDAP together"
+
+  [[role.signal]]
+  tcp_any = [3268, 3269]
+  weight = 30
+  note = "Active Directory global catalog"
+
+  [[role.signal]]
+  product_any = ["Active Directory"]
+  weight = 40
+
+  [[role.signal]]
+  tcp_any = [464]
+  weight = 10
+  note = "Kerberos password changes"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "hypervisor"
+label = "Virtualization host"
+criticality = "high"
+
+  [[role.signal]]
+  product_any = ["VMware ESXi", "VMware Authentication Daemon", "Proxmox", "Hyper-V", "XenServer", "oVirt"]
+  weight = 60
+
+  [[role.signal]]
+  tcp_any = [902]
+  weight = 40
+  note = "VMware host management"
+
+  [[role.signal]]
+  tcp_any = [8006]
+  weight = 40
+  note = "Proxmox web interface"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "management_controller"
+label = "Server management controller"
+criticality = "high"
+
+  [[role.signal]]
+  product_any = ["iLO", "iDRAC", "IPMI", "Supermicro", "Integrated Management Module", "AMI MegaRAC"]
+  weight = 60
+
+  [[role.signal]]
+  udp_any = [623]
+  weight = 45
+  note = "IPMI remote management"
+
+  [[role.signal]]
+  tcp_any = [623, 664]
+  weight = 25
+  note = "IPMI remote management"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "database_server"
+label = "Database server"
+criticality = "high"
+
+  [[role.signal]]
+  tcp_any = [1433, 1521, 3306, 5432, 6379, 9042, 9200, 11211, 27017, 5984, 7474, 8086, 26257]
+  weight = 55
+  note = "database port"
+
+  [[role.signal]]
+  product_any = ["MySQL", "MariaDB", "PostgreSQL", "Microsoft SQL Server", "Oracle TNS", "MongoDB", "Redis", "Elasticsearch", "Memcached", "Cassandra", "CouchDB", "Neo4j", "InfluxDB", "CockroachDB"]
+  weight = 35
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "industrial_device"
+label = "Industrial control device"
+criticality = "high"
+
+  [[role.signal]]
+  tcp_any = [102, 502, 20000, 44818, 2404, 1911, 4911, 9600]
+  weight = 60
+  note = "industrial control protocol"
+
+  [[role.signal]]
+  udp_any = [47808, 2222]
+  weight = 50
+  note = "building or industrial automation protocol"
+
+  [[role.signal]]
+  vendor_any = ["Siemens", "Rockwell", "Allen-Bradley", "Schneider", "Omron", "Mitsubishi Electric", "Beckhoff", "WAGO", "Moxa", "Honeywell"]
+  weight = 30
+  note = "industrial equipment maker"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "nas"
+label = "Network storage (NAS)"
+criticality = "high"
+
+  [[role.signal]]
+  vendor_any = ["Synology", "QNAP", "Western Digital", "Buffalo", "ASUSTOR", "TerraMaster", "Drobo", "NETGEAR ReadyNAS"]
+  weight = 60
+  note = "storage device maker"
+
+  [[role.signal]]
+  product_any = ["Synology", "QNAP", "DiskStation", "TrueNAS", "FreeNAS", "OpenMediaVault"]
+  weight = 50
+
+  [[role.signal]]
+  tcp_any = [2049]
+  weight = 25
+  note = "NFS file sharing"
+
+  [[role.signal]]
+  tcp_any = [548]
+  weight = 20
+  note = "Apple file sharing"
+
+  [[role.signal]]
+  tcp_any = [5000, 5001]
+  weight = 10
+  note = "common NAS web interface ports"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "file_server"
+label = "File sharing"
+criticality = "medium"
+
+  [[role.signal]]
+  tcp_all = [139, 445]
+  weight = 30
+  note = "Windows file sharing, SMB"
+
+  [[role.signal]]
+  tcp_any = [2049]
+  weight = 30
+  note = "NFS file sharing"
+
+  [[role.signal]]
+  tcp_any = [21]
+  weight = 20
+  note = "FTP"
+
+  [[role.signal]]
+  product_any = ["Samba", "vsftpd", "ProFTPD", "FileZilla Server", "Pure-FTPd"]
+  weight = 25
+
+  [[role.signal]]
+  os_any = ["Windows 10", "Windows 11", "Windows 7", "Windows 8"]
+  weight = -20
+  note = "desktop Windows often has file sharing on without being a file server"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "mail_server"
+label = "Mail server"
+criticality = "medium"
+
+  [[role.signal]]
+  tcp_any = [25, 465, 587]
+  weight = 35
+  note = "mail sending, SMTP"
+
+  [[role.signal]]
+  tcp_any = [110, 143, 993, 995]
+  weight = 25
+  note = "mailbox access, POP3/IMAP"
+
+  [[role.signal]]
+  product_any = ["Postfix", "Exim", "Microsoft Exchange", "Exchange smtpd", "Dovecot", "Sendmail", "Courier", "hMailServer", "Zimbra"]
+  weight = 35
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "dns_server"
+label = "DNS server"
+criticality = "medium"
+
+  [[role.signal]]
+  tcp_any = [53]
+  weight = 30
+  note = "DNS"
+
+  [[role.signal]]
+  udp_any = [53]
+  weight = 30
+  note = "DNS"
+
+  [[role.signal]]
+  product_any = ["BIND", "ISC BIND", "Microsoft DNS", "Unbound", "PowerDNS", "dnsmasq", "Knot DNS", "CoreDNS"]
+  weight = 25
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "vpn_gateway"
+label = "VPN gateway"
+criticality = "high"
+
+  [[role.signal]]
+  udp_any = [500, 4500, 1194, 51820]
+  weight = 40
+  note = "VPN protocol"
+
+  [[role.signal]]
+  tcp_any = [1194, 1723]
+  weight = 30
+  note = "VPN protocol"
+
+  [[role.signal]]
+  product_any = ["OpenVPN", "FortiGate SSL VPN", "Pulse Secure", "GlobalProtect", "Cisco ASA", "WireGuard"]
+  weight = 40
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "web_server"
+label = "Web server"
+criticality = "medium"
+
+  [[role.signal]]
+  tcp_any = [80, 443, 8000, 8080, 8443, 8888, 3000, 5000, 9443]
+  weight = 30
+  note = "web port"
+
+  [[role.signal]]
+  service_any = ["http"]
+  weight = 15
+
+  [[role.signal]]
+  product_any = ["nginx", "Apache httpd", "Microsoft IIS", "lighttpd", "Caddy", "Apache Tomcat", "Jetty", "gunicorn", "Node.js", "Express", "LiteSpeed", "OpenResty"]
+  weight = 30
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "printer"
+label = "Printer"
+criticality = "medium"
+
+  [[role.signal]]
+  tcp_any = [9100]
+  weight = 50
+  note = "raw printing"
+
+  [[role.signal]]
+  tcp_any = [515]
+  weight = 25
+  note = "LPD printing"
+
+  [[role.signal]]
+  tcp_any = [631]
+  weight = 20
+  note = "IPP printing"
+
+  [[role.signal]]
+  product_any = ["JetDirect", "HP LaserJet", "Brother", "Lexmark", "Xerox", "Kyocera", "RICOH", "Canon", "Epson", "PJL"]
+  weight = 40
+
+  [[role.signal]]
+  vendor_any = ["Brother", "Canon", "Seiko Epson", "Lexmark", "Xerox", "Kyocera", "Ricoh", "Konica Minolta", "Sharp", "Zebra"]
+  weight = 30
+  note = "printer maker"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "camera"
+label = "Camera or video recorder"
+criticality = "medium"
+
+  [[role.signal]]
+  vendor_any = ["Hikvision", "Dahua", "Axis Communications", "Amcrest", "Reolink", "Hanwha", "Uniview", "Vivotek", "Mobotix", "Foscam", "Lorex"]
+  weight = 60
+  note = "camera maker"
+
+  [[role.signal]]
+  tcp_any = [554, 8554]
+  weight = 40
+  note = "video streaming, RTSP"
+
+  [[role.signal]]
+  tcp_any = [37777]
+  weight = 40
+  note = "Dahua device protocol"
+
+  [[role.signal]]
+  product_any = ["Hikvision", "Dahua", "AXIS", "RTSP", "DVR", "NVR", "IP Camera"]
+  weight = 35
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "voip_device"
+label = "VoIP phone or system"
+criticality = "medium"
+
+  [[role.signal]]
+  tcp_any = [5060, 5061]
+  weight = 40
+  note = "SIP calling"
+
+  [[role.signal]]
+  udp_any = [5060]
+  weight = 40
+  note = "SIP calling"
+
+  [[role.signal]]
+  vendor_any = ["Polycom", "Yealink", "Grandstream", "Avaya", "Snom", "Mitel", "Fanvil"]
+  weight = 45
+  note = "phone maker"
+
+  [[role.signal]]
+  product_any = ["Asterisk", "FreePBX", "3CX", "Polycom", "Yealink"]
+  weight = 35
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "media_device"
+label = "Media or smart-home device"
+criticality = "low"
+
+  [[role.signal]]
+  tcp_any = [8008, 8009]
+  weight = 45
+  note = "Chromecast / Google Cast"
+
+  [[role.signal]]
+  tcp_any = [7000, 7100]
+  weight = 25
+  note = "AirPlay"
+
+  [[role.signal]]
+  tcp_any = [1400]
+  weight = 45
+  note = "Sonos"
+
+  [[role.signal]]
+  vendor_any = ["Roku", "Sonos", "Amazon Technologies", "Google", "Nest Labs", "Philips Lighting", "Signify", "LG Electronics", "Vizio", "TCL", "Bose"]
+  weight = 30
+  note = "consumer device maker"
+
+  [[role.signal]]
+  udp_any = [1900, 5353]
+  weight = 10
+  note = "device announcement, SSDP/mDNS"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "iot_device"
+label = "IoT device"
+criticality = "medium"
+
+  [[role.signal]]
+  vendor_any = ["Espressif", "Tuya", "Shelly", "Sonoff", "ITEAD", "Particle", "Silicon Labs", "Texas Instruments", "Murata", "Wiz", "Xiaomi Communications"]
+  weight = 45
+  note = "maker of chips used in smart devices"
+
+  [[role.signal]]
+  tcp_any = [1883, 8883]
+  weight = 35
+  note = "MQTT messaging"
+
+  [[role.signal]]
+  udp_any = [5683]
+  weight = 30
+  note = "CoAP"
+
+  [[role.signal]]
+  product_any = ["lwIP", "ESP8266", "ESP32", "Mosquitto", "micro_httpd", "uIP"]
+  weight = 30
+
+  [[role.signal]]
+  tcp_any = [23]
+  weight = 10
+  note = "Telnet, common on small embedded devices"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "server"
+label = "Server"
+criticality = "medium"
+
+  [[role.signal]]
+  os_any = ["Windows Server", "Red Hat", "CentOS", "Rocky Linux", "AlmaLinux", "SUSE Linux Enterprise", "FreeBSD", "Solaris"]
+  weight = 45
+
+  [[role.signal]]
+  tcp_any = [22]
+  weight = 15
+  note = "remote shell, SSH"
+
+  [[role.signal]]
+  tcp_any = [5985, 5986]
+  weight = 30
+  note = "Windows remote management"
+
+  [[role.signal]]
+  tcp_any = [3389]
+  weight = 10
+  note = "remote desktop"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "workstation"
+label = "Workstation"
+criticality = "medium"
+
+  [[role.signal]]
+  os_any = ["Windows 10", "Windows 11", "Windows 7", "Windows 8", "macOS", "Mac OS X", "Ubuntu Desktop"]
+  weight = 50
+
+  [[role.signal]]
+  tcp_any = [3389, 5900]
+  weight = 15
+  note = "remote desktop"
+
+  [[role.signal]]
+  tcp_all = [135, 139, 445]
+  weight = 20
+  note = "standard Windows ports"
+
+  [[role.signal]]
+  hostname_any = ["desktop-", "laptop", "-pc", "macbook", "imac", "workstation"]
+  weight = 30
+
+  [[role.signal]]
+  os_any = ["Windows Server"]
+  weight = -50
+  note = "a server operating system"
+
+# ----------------------------------------------------------------------
+[[role]]
+key = "mobile_device"
+label = "Phone or tablet"
+criticality = "low"
+
+  [[role.signal]]
+  os_any = ["iOS", "iPadOS", "Android"]
+  weight = 55
+
+  [[role.signal]]
+  tcp_any = [62078]
+  weight = 60
+  note = "iPhone/iPad sync service"
+
+  [[role.signal]]
+  hostname_any = ["iphone", "ipad", "android", "galaxy", "pixel"]
+  weight = 40
+
+  [[role.signal]]
+  vendor_any = ["Apple", "Samsung Electronics", "OnePlus", "Xiaomi", "Huawei Device", "OPPO", "vivo", "Motorola Mobility", "Realme"]
+  weight = 15
+  note = "phone maker, also makes other devices"
+
+  [[role.signal]]
+  no_open_ports = true
+  weight = 10
+  note = "phones usually have no open ports"
+
+  [[role.signal]]
+  os_any = ["Cisco", "IOS XE", "IOS XR", "NX-OS"]
+  weight = -70
+  note = "Cisco network operating system, not Apple iOS"

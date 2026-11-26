@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
 from argus.modules.models import HostInfo, ScanResult
 
@@ -33,6 +34,14 @@ STATE_STYLES = {
     "open": "green",
     "open|filtered": "yellow",
 }
+
+CONFIDENCE_STYLES = {"high": "bold", "medium": "", "low": "dim"}
+CRITICALITY_STYLES = {"high": "bold red", "medium": "yellow", "low": "green"}
+
+ASSETS_FOOTER = (
+    "Roles are estimates worked out from open ports, software, MAC vendor "
+    "and OS estimate. Check the evidence before relying on them."
+)
 
 
 def safe_text(value, style: str = "") -> Text:
@@ -86,6 +95,17 @@ def _summary_table(result: ScanResult) -> Table:
     return table
 
 
+def _role_text(host: HostInfo) -> Text:
+    role = host.primary_role
+
+    if role is None:
+        return Text("Unknown", style="dim")
+
+    text = safe_text(role.label, style=CONFIDENCE_STYLES[role.confidence])
+    text.append(f" ({role.confidence})", style="dim")
+    return text
+
+
 def _hosts_table(result: ScanResult) -> Table:
     table = Table(title="Hosts that responded", title_justify="left")
 
@@ -94,6 +114,7 @@ def _hosts_table(result: ScanResult) -> Table:
     table.add_column("Vendor (MAC)")
     table.add_column("Responded via")
     table.add_column("OS (estimate)")
+    table.add_column("Likely role")
     table.add_column("Open ports", justify="right")
 
     for host in result.up_hosts:
@@ -103,6 +124,7 @@ def _hosts_table(result: ScanResult) -> Table:
             _vendor_text(host),
             safe_text(host.discovery_method),
             _os_text(host),
+            _role_text(host),
             Text(str(len(host.open_ports))),
         )
 
@@ -270,3 +292,197 @@ def show_comparison(
 
     out.print()
     out.print(Text(COMPARISON_FOOTER, style="dim"))
+
+
+# ---------- assets ----------
+
+def show_assets(result: ScanResult, output: Console | None = None) -> None:
+    """Print every host's likely role, criticality and the evidence for it."""
+    out = output or console
+
+    out.print()
+    out.print(Rule("ASSETS", style="cyan"))
+
+    if not result.up_hosts:
+        out.print("[yellow]No hosts responded during this scan.[/yellow]")
+        return
+
+    summary = Table(title="Assets by criticality", title_justify="left")
+    summary.add_column("Criticality")
+    summary.add_column("Hosts", justify="right")
+
+    for level in ("high", "medium", "low"):
+        count = sum(1 for host in result.up_hosts if host.criticality == level)
+
+        if count:
+            summary.add_row(Text(level.title(), style=CRITICALITY_STYLES[level]), str(count))
+
+    out.print(summary)
+
+    table = Table(title="Assets", title_justify="left", show_lines=True)
+    table.add_column("Host", style="bold")
+    table.add_column("Likely role")
+    table.add_column("Evidence")
+    table.add_column("Also possible")
+    table.add_column("Criticality")
+
+    for host in result.up_hosts:
+        name = Text(host.ip)
+
+        if host.hostname:
+            name.append("\n")
+            name.append_text(safe_text(host.hostname, style="dim"))
+
+        role = host.primary_role
+        evidence = Text()
+
+        if role is None:
+            evidence = Text("Not enough evidence to tell", style="dim")
+        else:
+            for index, reason in enumerate(role.reasons):
+                if index:
+                    evidence.append("\n")
+
+                evidence.append("- ")
+                evidence.append_text(safe_text(reason))
+
+        others = Text()
+
+        for index, match in enumerate(host.roles[1:]):
+            if index:
+                others.append("\n")
+
+            others.append_text(safe_text(match.label))
+            others.append(f" ({match.confidence})", style="dim")
+
+        criticality = Text(
+            (host.criticality or "-").title(),
+            style=CRITICALITY_STYLES.get(host.criticality, ""),
+        )
+
+        if host.criticality_reason:
+            criticality.append("\n")
+            criticality.append_text(safe_text(host.criticality_reason, style="dim"))
+
+        table.add_row(
+            name,
+            _role_text(host),
+            evidence,
+            others if host.roles[1:] else safe_text(None),
+            criticality,
+        )
+
+    out.print()
+    out.print(table)
+    out.print()
+    out.print(Text(ASSETS_FOOTER, style="dim"))
+
+
+# ---------- network map ----------
+
+MAP_FOOTER = (
+    "Observed links were seen by traceroute. Inferred links are worked out "
+    "from addresses only and may not match the real wiring."
+)
+
+
+def _map_label(node, basis: str | None = None, reason: str | None = None) -> Text:
+    text = safe_text(node.label, style="bold" if node.kind == "gateway" else "")
+
+    if node.role_label:
+        text.append("  ")
+        text.append_text(safe_text(node.role_label))
+        text.append(f" ({node.confidence})", style="dim")
+
+    if node.criticality == "high":
+        text.append("  [high criticality]", style=CRITICALITY_STYLES["high"])
+
+    if basis:
+        style = "green" if basis == "observed" else "yellow"
+        text.append(f"  gateway, {basis}", style=style)
+
+        if reason:
+            text.append(f": {reason}", style="dim")
+
+    return text
+
+
+def show_network_map(network_map, output: Console | None = None) -> None:
+    """Print a NetworkMap as a tree: subnet, then gateway, then hosts."""
+    out = output or console
+
+    out.print()
+    out.print(Rule("NETWORK MAP", style="cyan"))
+
+    if not network_map.subnets:
+        out.print("[yellow]No hosts responded, so there is nothing to map.[/yellow]")
+        return
+
+    tree = Tree(Text("Scanned network", style="bold cyan"))
+
+    for group in network_map.subnets:
+        title = Text(group.network, style="bold")
+        title.append(
+            f"  {len(group.host_ips)} host{'s' if len(group.host_ips) != 1 else ''}",
+            style="dim",
+        )
+
+        if group.assumed:
+            title.append("  (subnet size assumed)", style="yellow")
+
+        branch = tree.add(title)
+        members = [ip for ip in group.host_ips if ip != group.gateway_ip]
+
+        if group.gateway_ip:
+            gateway_node = network_map.nodes[group.gateway_ip]
+            parent = branch.add(
+                _map_label(gateway_node, group.gateway_basis, group.gateway_reason)
+            )
+
+            if group.gateway_ip not in group.host_ips:
+                parent.label.append("  (not in this scan's results)", style="dim")
+        else:
+            parent = branch
+
+        for ip in members:
+            parent.add(_map_label(network_map.nodes[ip]))
+
+    out.print(tree)
+
+    if network_map.paths:
+        paths = Table(title="Traced paths", title_justify="left")
+        paths.add_column("Host", style="bold")
+        paths.add_column("Hops", justify="right")
+        paths.add_column("Path from this computer")
+
+        for ip, path in sorted(network_map.paths.items()):
+            shown = " -> ".join(hop if hop else "*" for hop in path)
+            paths.add_row(safe_text(ip), str(len(path)), safe_text(shown))
+
+        out.print()
+        out.print(paths)
+        out.print("[dim]* = a hop that did not answer.[/dim]")
+
+    links = Table.grid(padding=(0, 2))
+    links.add_column(style="bold cyan")
+    links.add_column()
+    links.add_row("Observed links", str(len(network_map.observed_links)))
+    links.add_row("Inferred links", str(len(network_map.inferred_links)))
+    out.print()
+    out.print(links)
+
+    if network_map.notes:
+        notes = Text()
+
+        for index, note in enumerate(network_map.notes):
+            if index:
+                notes.append("\n")
+
+            notes.append("- ")
+            notes.append_text(safe_text(note))
+
+        out.print()
+        out.print(Panel(notes, title="About this map", border_style="yellow"))
+
+    out.print()
+    out.print(Text(MAP_FOOTER, style="dim"))

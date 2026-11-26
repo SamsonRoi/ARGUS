@@ -8,7 +8,14 @@ from rich.markup import escape
 from rich.table import Table
 
 from argus.modules.compare import compare_scans
-from argus.results_display import safe_text, show_comparison, show_scan_results
+from argus.modules.topology import build_network_map
+from argus.results_display import (
+    safe_text,
+    show_assets,
+    show_comparison,
+    show_network_map,
+    show_scan_results,
+)
 from argus.storage.database import StorageError, connect, default_db_path
 from argus.storage.repository import (
     create_engagement,
@@ -148,6 +155,17 @@ def view_scan(connection, summaries) -> None:
 
     result = load_scan(connection, scan_id)
     show_scan_results(result, detail_limit=None)
+    show_assets(result)
+    wait_for_enter("Press Enter to continue...")
+
+
+def view_network_map(connection, summaries) -> None:
+    scan_id = ask_scan_id(summaries, "Which scan do you want to map?")
+
+    if scan_id is None:
+        return
+
+    show_network_map(build_network_map(load_scan(connection, scan_id)))
     wait_for_enter("Press Enter to continue...")
 
 
@@ -417,20 +435,21 @@ def scan_history_menu(session) -> None:
             else:
                 print("No scans have been saved yet. Every scan you run is saved here.")
 
-            print("\n1. View a saved scan")
-            print("2. Compare two scans")
-            print("3. Compare the newest scan with its baseline")
-            print("4. Mark a scan as the baseline")
-            print("5. Delete a scan")
-            print("6. Engagements")
+            print("\n1. View a saved scan (results and assets)")
+            print("2. Network map of a saved scan")
+            print("3. Compare two scans")
+            print("4. Compare the newest scan with its baseline")
+            print("5. Mark a scan as the baseline")
+            print("6. Delete a scan")
+            print("7. Engagements")
             print("0. Back")
 
-            choice = get_menu_choice("Your next move:", [0, 1, 2, 3, 4, 5, 6])
+            choice = get_menu_choice("Your next move:", [0, 1, 2, 3, 4, 5, 6, 7])
 
             if choice == 0:
                 return
 
-            if choice == 6:
+            if choice == 7:
                 engagements_menu(connection, session)
                 continue
 
@@ -441,12 +460,14 @@ def scan_history_menu(session) -> None:
             if choice == 1:
                 view_scan(connection, summaries)
             elif choice == 2:
-                compare_two(connection, summaries)
+                view_network_map(connection, summaries)
             elif choice == 3:
-                compare_latest_with_baseline(connection, summaries, session)
+                compare_two(connection, summaries)
             elif choice == 4:
-                mark_baseline(connection, summaries)
+                compare_latest_with_baseline(connection, summaries, session)
             elif choice == 5:
+                mark_baseline(connection, summaries)
+            elif choice == 6:
                 remove_scan(connection, summaries, session)
 
     except StorageError as error:

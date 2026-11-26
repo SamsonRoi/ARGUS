@@ -103,6 +103,36 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_ports_host      ON ports(host_id);
     CREATE INDEX idx_raw_scan        ON raw_outputs(scan_id);
     """,
+    # ----- Version 2: asset roles, criticality, traceroute hops -----
+    """
+    ALTER TABLE scans ADD COLUMN classifier_version TEXT;
+    ALTER TABLE hosts ADD COLUMN criticality TEXT;
+    ALTER TABLE hosts ADD COLUMN criticality_reason TEXT;
+
+    -- Every role a host matched, strongest first, with its evidence.
+    CREATE TABLE host_roles (
+        host_id    INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+        position   INTEGER NOT NULL,
+        role       TEXT NOT NULL,
+        label      TEXT NOT NULL,
+        confidence TEXT NOT NULL,
+        score      INTEGER NOT NULL,
+        reasons    TEXT NOT NULL DEFAULT '[]',   -- JSON list of evidence
+        PRIMARY KEY (host_id, role)
+    );
+
+    -- The traceroute path to a host (ip is NULL for hops that did not answer).
+    CREATE TABLE trace_hops (
+        host_id  INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+        ttl      INTEGER NOT NULL,
+        ip       TEXT,
+        rtt_ms   REAL,
+        hostname TEXT,
+        PRIMARY KEY (host_id, ttl)
+    );
+
+    CREATE INDEX idx_roles_role ON host_roles(role);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

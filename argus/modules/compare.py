@@ -28,6 +28,11 @@ PORT_FIRST_CHECKED = "port_first_checked"
 PORT_NOT_RECHECKED = "port_not_rechecked"
 SERVICE_CHANGED = "service_changed"
 OS_CHANGED = "os_changed"
+ROLE_CHANGED = "role_changed"
+
+# Only believable roles are compared, so a low-confidence guess flipping
+# between two scans is not reported as a change.
+TRUSTED_CONFIDENCE = ("high", "medium")
 
 # Display order, and whether a kind is a confirmed change or only a hint.
 EVENT_KINDS = {
@@ -38,6 +43,7 @@ EVENT_KINDS = {
     PORT_CLOSED: ("Port no longer open", True),
     SERVICE_CHANGED: ("Service changed", True),
     OS_CHANGED: ("OS estimate changed", True),
+    ROLE_CHANGED: ("Role changed", True),
     PORT_FIRST_CHECKED: ("Open, not checked before", False),
     PORT_NOT_RECHECKED: ("Not re-checked", False),
 }
@@ -369,6 +375,20 @@ def compare_scans(older: ScanResult, newer: ScanResult) -> ScanComparison:
                 OS_CHANGED, match.newer.ip,
                 f"OS estimate changed from {old_os.name} to {new_os.name}",
                 before=old_os.name, after=new_os.name,
+            ))
+
+        old_role, new_role = match.older.primary_role, match.newer.primary_role
+
+        if (
+            old_role and new_role
+            and old_role.confidence in TRUSTED_CONFIDENCE
+            and new_role.confidence in TRUSTED_CONFIDENCE
+            and old_role.role != new_role.role
+        ):
+            comparison.events.append(ChangeEvent(
+                ROLE_CHANGED, match.newer.ip,
+                f"Likely role changed from {old_role.label} to {new_role.label}",
+                before=old_role.label, after=new_role.label,
             ))
 
     order = list(EVENT_KINDS)

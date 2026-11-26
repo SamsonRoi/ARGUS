@@ -58,6 +58,35 @@ class OSGuess:
             raise ValueError(f"Accuracy must be 0-100, got {self.accuracy}")
 
 
+CONFIDENCE_LEVELS = ("high", "medium", "low")
+CRITICALITY_LEVELS = ("high", "medium", "low")
+
+
+@dataclass
+class RoleMatch:
+    """One role a host appears to have, with the evidence behind it."""
+
+    role: str
+    label: str
+    confidence: str
+    score: int
+    reasons: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.confidence not in CONFIDENCE_LEVELS:
+            raise ValueError(f"Invalid confidence: {self.confidence}")
+
+
+@dataclass
+class TraceHop:
+    """One step on the network path from this computer to a host."""
+
+    ttl: int
+    ip: str | None = None          # None when the hop did not answer
+    rtt_ms: float | None = None
+    hostname: str | None = None
+
+
 @dataclass
 class HostInfo:
     """One host that responded during a scan."""
@@ -70,6 +99,15 @@ class HostInfo:
     discovery_method: str | None = None
     ports: list[PortInfo] = field(default_factory=list)
     os_guess: OSGuess | None = None
+    roles: list[RoleMatch] = field(default_factory=list)   # strongest first
+    criticality: str | None = None
+    criticality_reason: str | None = None
+    trace: list[TraceHop] = field(default_factory=list)
+
+    @property
+    def primary_role(self) -> RoleMatch | None:
+        """The strongest role, or None if nothing matched."""
+        return self.roles[0] if self.roles else None
 
     def add_port(self, port_info: PortInfo) -> None:
         """Add a port. A port with the same number and protocol is replaced."""
@@ -104,6 +142,7 @@ class ScanResult:
     hosts: list[HostInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     evidence: ScanEvidence = field(default_factory=ScanEvidence)
+    classifier_version: str | None = None   # rules version used for roles
 
     def add_host(self, host: HostInfo) -> None:
         """Add a host. A host with the same IP address is replaced."""

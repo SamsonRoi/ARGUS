@@ -193,3 +193,58 @@ def test_scans_keep_their_engagement(db):
     save_scan(db, make_result())
 
     assert [s.engagement_name for s in list_scans(db, engagement_id=office.id)] == ["Office LAN"]
+
+
+# ---------- Step 6: roles, criticality, traces ----------
+
+def test_roles_criticality_and_trace_round_trip(db):
+    from argus.modules.classify import classify_result
+    from argus.modules.models import TraceHop
+
+    original = make_result()
+    original.get_host("10.0.0.5").trace = [
+        TraceHop(1, "10.0.0.1", 0.5, "gw.lan"),
+        TraceHop(2, None),
+        TraceHop(3, "10.0.0.5", 1.25),
+    ]
+    original.get_host("10.0.0.5").add_port(PortInfo(5432, "tcp", "open", "postgresql"))
+    classify_result(original)
+
+    loaded = load_scan(db, save_scan(db, original))
+    before, after = original.get_host("10.0.0.5"), loaded.get_host("10.0.0.5")
+
+    assert loaded.classifier_version == original.classifier_version
+    assert after.roles == before.roles
+    assert after.primary_role.role == "database_server"
+    assert after.criticality == "high"
+    assert after.criticality_reason == before.criticality_reason
+    assert after.trace == before.trace
+
+
+def test_step5_database_is_upgraded_and_old_scans_are_classified(tmp_path):
+    """A history file made before Step 6 keeps working."""
+    import sqlite3
+
+    from argus.storage import database
+
+    path = tmp_path / "step5.db"
+    raw = sqlite3.connect(path)
+    raw.executescript(database.MIGRATIONS[0] + "\nPRAGMA user_version = 1;")
+    raw.execute(
+        "INSERT INTO scans (id, kind, profile, targets, started_at) "
+        "VALUES (1, 'port_scan', 'Quick TCP', '[\"10.0.0.5\"]', '2026-11-25T10:00:00+05:30')"
+    )
+    raw.execute("INSERT INTO hosts (id, scan_id, ip, state) VALUES (1, 1, '10.0.0.5', 'up')")
+    raw.execute(
+        "INSERT INTO ports (host_id, port, protocol, state) VALUES (1, 9100, 'tcp', 'open')"
+    )
+    raw.commit()
+    raw.close()
+
+    connection = connect(path)
+    loaded = load_scan(connection, 1)
+
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
+    assert loaded.get_host("10.0.0.5").primary_role.role == "printer"
+    # Classifying on load does not rewrite the stored record.
+    assert connection.execute("SELECT COUNT(*) FROM host_roles").fetchone()[0] == 0

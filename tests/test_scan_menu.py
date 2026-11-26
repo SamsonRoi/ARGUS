@@ -113,7 +113,7 @@ def test_custom_ports_ask_again_until_valid(monkeypatch, capsys):
 # ---------- choosing optional TCP extras ----------
 
 def test_all_extras_chosen(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [True, True, True, True])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [True, True, True, True, True])
 
     options = ask_scan_options(("standard", None))
 
@@ -121,10 +121,11 @@ def test_all_extras_chosen(monkeypatch):
     assert options.service_detection
     assert options.udp_scan
     assert options.os_estimation
+    assert options.traceroute
 
 
 def test_no_extras_chosen(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, True])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False, True])
 
     options = ask_scan_options(("full", None))
 
@@ -137,7 +138,7 @@ def test_no_extras_chosen(monkeypatch):
 
 
 def test_custom_ports_are_preserved(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, True])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False, True])
 
     options = ask_scan_options(("standard", "22,80"))
 
@@ -146,7 +147,7 @@ def test_custom_ports_are_preserved(monkeypatch):
 
 
 def test_recommended_discovery_methods_are_the_default(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, True])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False, True])
 
     options = ask_scan_options(("quick", None))
 
@@ -154,7 +155,7 @@ def test_recommended_discovery_methods_are_the_default(monkeypatch):
 
 
 def test_tcp_scan_can_choose_discovery_methods(monkeypatch):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False, False])
     monkeypatch.setattr(
         scan_menu, "choose_methods_manually", lambda: ["tcp_syn", "udp"]
     )
@@ -165,7 +166,7 @@ def test_tcp_scan_can_choose_discovery_methods(monkeypatch):
 
 
 def test_choosing_no_methods_falls_back_to_recommended(monkeypatch, capsys):
-    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False])
+    feed(monkeypatch, scan_menu, "ask_yes_no", [False, False, False, False, False])
     monkeypatch.setattr(scan_menu, "choose_methods_manually", lambda: None)
 
     options = ask_scan_options(("quick", None))
