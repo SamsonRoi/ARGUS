@@ -154,7 +154,7 @@ def test_compare_two_scans_from_the_menu(monkeypatch, capsys, two_scans):
     older, newer = two_scans
     quiet(monkeypatch)
     # menu: compare -> pick newer first, then older -> back out
-    feed(monkeypatch, "get_menu_choice", [3, newer, older, 0])
+    feed(monkeypatch, "get_menu_choice", [4, newer, older, 0])
 
     history_menu.scan_history_menu(make_session())
 
@@ -169,7 +169,7 @@ def test_compare_two_scans_from_the_menu(monkeypatch, capsys, two_scans):
 def test_baseline_then_compare_latest(monkeypatch, capsys, two_scans):
     older, newer = two_scans
     quiet(monkeypatch)
-    feed(monkeypatch, "get_menu_choice", [5, older, 4, 0])
+    feed(monkeypatch, "get_menu_choice", [6, older, 5, 0])
 
     history_menu.scan_history_menu(make_session())
 
@@ -181,7 +181,7 @@ def test_baseline_then_compare_latest(monkeypatch, capsys, two_scans):
 
 def test_compare_latest_without_baseline(monkeypatch, capsys, two_scans):
     quiet(monkeypatch)
-    feed(monkeypatch, "get_menu_choice", [4, 0])
+    feed(monkeypatch, "get_menu_choice", [5, 0])
 
     history_menu.scan_history_menu(make_session())
 
@@ -191,7 +191,7 @@ def test_compare_latest_without_baseline(monkeypatch, capsys, two_scans):
 def test_delete_asks_first(monkeypatch, capsys, two_scans):
     older, newer = two_scans
     quiet(monkeypatch)
-    feed(monkeypatch, "get_menu_choice", [6, older, 6, older, 0])
+    feed(monkeypatch, "get_menu_choice", [7, older, 7, older, 0])
     feed(monkeypatch, "ask_yes_no", [False, True])
 
     history_menu.scan_history_menu(make_session())
@@ -218,7 +218,7 @@ def test_view_a_saved_scan(monkeypatch, two_scans):
 def test_create_and_choose_an_engagement(monkeypatch, capsys):
     quiet(monkeypatch)
     session = make_session()
-    feed(monkeypatch, "get_menu_choice", [7, 1, 0, 0])
+    feed(monkeypatch, "get_menu_choice", [8, 1, 0, 0])
     feed(monkeypatch, "get_text_input", ["Office LAN"])
     # authorized by, scope (Enter = session targets), start, end, notes
     feed(monkeypatch, "get_optional_text", ["R. Kumar", None, "2026-12-01", None, None])

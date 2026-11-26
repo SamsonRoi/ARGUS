@@ -224,6 +224,11 @@ def _find_word(words: tuple, texts: list[str]) -> tuple[str, str] | None:
     return None
 
 
+def find_word(words, texts: list[str]) -> tuple[str, str] | None:
+    """Public form of the whole-word matcher, shared with the risk engine."""
+    return _find_word(tuple(words), texts)
+
+
 def _ports(host: HostInfo, protocol: str) -> set[int]:
     return {port.port for port in host.open_ports if port.protocol == protocol}
 

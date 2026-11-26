@@ -133,6 +133,24 @@ MIGRATIONS: list[str] = [
 
     CREATE INDEX idx_roles_role ON host_roles(role);
     """,
+    # ----- Version 3: accepted risks -----
+    """
+    -- A finding someone decided to live with, for a reason, until a date.
+    CREATE TABLE risk_acceptances (
+        id            INTEGER PRIMARY KEY,
+        fingerprint   TEXT NOT NULL,     -- same problem on the same host/subnet
+        rule          TEXT NOT NULL,
+        title         TEXT NOT NULL,
+        location      TEXT NOT NULL,     -- host and ports, or subnet
+        reason        TEXT NOT NULL,
+        accepted_by   TEXT,
+        expires_on    TEXT,              -- ISO date; NULL = no expiry
+        created_at    TEXT NOT NULL,
+        engagement_id INTEGER REFERENCES engagements(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX idx_acceptances_fingerprint ON risk_acceptances(fingerprint);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

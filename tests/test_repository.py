@@ -248,3 +248,66 @@ def test_step5_database_is_upgraded_and_old_scans_are_classified(tmp_path):
     assert loaded.get_host("10.0.0.5").primary_role.role == "printer"
     # Classifying on load does not rewrite the stored record.
     assert connection.execute("SELECT COUNT(*) FROM host_roles").fetchone()[0] == 0
+
+
+# ---------- Step 7: accepted risks ----------
+
+def _telnet_finding():
+    from argus.modules.classify import classify_result
+    from argus.modules.risk import analyze
+
+    result = ScanResult(targets=["10.0.0.30"], profile="Quick TCP")
+    camera = HostInfo(ip="10.0.0.30", vendor="Hikvision")
+    camera.add_port(PortInfo(23))
+    result.add_host(camera)
+    classify_result(result)
+    return next(item for item in analyze(result).findings if item.rule == "telnet_open")
+
+
+def test_accept_list_and_revoke(db):
+    from argus.storage.repository import (
+        accept_risk,
+        acceptances_by_fingerprint,
+        list_acceptances,
+        revoke_acceptance,
+    )
+
+    finding = _telnet_finding()
+    until = date.today() + timedelta(days=30)
+    record_id = accept_risk(db, finding, "lab only", accepted_by="Samson", expires_on=until)
+
+    [record] = list_acceptances(db)
+    assert record.id == record_id
+    assert record.location == "10.0.0.30 (23/tcp)"
+    assert record.accepted_by == "Samson"
+    assert record.expires_on == until
+    assert record.active()
+
+    acceptance = acceptances_by_fingerprint(db)[finding.fingerprint]
+    assert acceptance.reason == "lab only"
+
+    assert revoke_acceptance(db, record_id)
+    assert not revoke_acceptance(db, record_id)
+    assert list_acceptances(db) == []
+
+
+def test_accepting_again_replaces_the_old_record(db):
+    from argus.storage.repository import accept_risk, list_acceptances
+
+    finding = _telnet_finding()
+    accept_risk(db, finding, "first reason")
+    accept_risk(db, finding, "second reason")
+
+    assert [record.reason for record in list_acceptances(db)] == ["second reason"]
+
+
+def test_acceptance_rules(db):
+    from argus.storage.repository import accept_risk
+
+    finding = _telnet_finding()
+
+    with pytest.raises(StorageError, match="needs a reason"):
+        accept_risk(db, finding, "   ")
+
+    with pytest.raises(StorageError, match="in the past"):
+        accept_risk(db, finding, "ok", expires_on=date.today() - timedelta(days=1))

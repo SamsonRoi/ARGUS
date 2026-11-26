@@ -1,0 +1,582 @@
+# ARGUS risk rules
+#
+# Each [[rule]] describes one risky exposure that a scan can show WITHOUT
+# attacking anything: a service that sends passwords in plain text, a
+# database open to the network, a banner reporting very old software.
+#
+#   key         unique id (lowercase, underscores)
+#   title       short name shown in findings
+#   category    cleartext | remote_access | data_exposure | no_auth |
+#               management | outdated | device_hygiene
+#   severity    critical | high | medium | low | info
+#   confidence  how strongly the evidence points to a real problem:
+#               high   = the exposure itself is the problem (Telnet is open)
+#               medium = usually a problem, but settings can make it safe
+#               low    = a hint worth checking (an old version banner)
+#   why         why it matters, in plain words
+#   fix         what to do about it
+#   references  optional list of standards or advisories
+#
+# [rule.when] holds the conditions. ALL of them must match. Available:
+#
+#   tcp_any        any of these TCP ports is open
+#   udp_any        any of these UDP ports is open (open|filtered does not count)
+#   service_any    an open port's service name contains one of these words
+#   product_any    an open port's software text contains one of these words
+#   version_below  { product = "OpenSSH", below = "7.4" }
+#   version_is     { product = "vsftpd", versions = ["2.3.4"] }
+#                  Both accept `unless = [...]`: skip when the software text
+#                  contains one of these words (MariaDB says "MySQL 5.5.5-...").
+#   os_any         the OS estimate contains one of these words
+#   role_any       the host has one of these roles (medium/high confidence)
+#   role_none      the host has none of these roles (medium/high confidence)
+#
+# At least one of tcp_any, udp_any, product_any, version_below, version_is
+# or os_any is required, so every finding points at concrete evidence.
+#
+# [[rule.raise]] makes a finding more severe in a given situation. Each
+# needs `to` (the new severity), a `note`, and one condition:
+#
+#   role_any      = [...]   the host has one of these roles
+#   criticality   = "high"  the host's criticality
+#   public        = true    the host has a public (internet) address
+#
+# A raise never lowers a severity. Increase `version` when rules change.
+
+version = 1
+
+# ======================================================================
+# Cleartext logins and data
+# ======================================================================
+
+[[rule]]
+key = "telnet_open"
+title = "Telnet is open"
+category = "cleartext"
+severity = "high"
+confidence = "high"
+why = "Telnet sends usernames, passwords and everything typed in plain text, so anyone on the network path can read them. Telnet on small devices is also a common way botnets take them over."
+fix = "Turn Telnet off and use SSH instead. If the device cannot do SSH, put it on an isolated network."
+references = ["CWE-319: Cleartext Transmission of Sensitive Information"]
+
+  [rule.when]
+  tcp_any = [23, 2323]
+
+  [[rule.raise]]
+  role_any = ["router", "management_controller", "hypervisor", "camera", "iot_device"]
+  to = "critical"
+  note = "this kind of device is a frequent botnet and takeover target"
+
+  [[rule.raise]]
+  public = true
+  to = "critical"
+  note = "reachable on a public address"
+
+[[rule]]
+key = "rservices_open"
+title = "Legacy r-services (rlogin/rsh/rexec) are open"
+category = "cleartext"
+severity = "high"
+confidence = "high"
+why = "rlogin, rsh and rexec send credentials in plain text and often trust other machines by address alone, which is easy to fake."
+fix = "Turn these services off and use SSH."
+references = ["CWE-319: Cleartext Transmission of Sensitive Information"]
+
+  [rule.when]
+  tcp_any = [512, 513, 514]
+
+[[rule]]
+key = "ftp_open"
+title = "FTP is open"
+category = "cleartext"
+severity = "medium"
+confidence = "medium"
+why = "Plain FTP sends the login and the files in plain text. Some servers also allow anonymous logins."
+fix = "Use SFTP or FTPS instead, or turn FTP off. If FTP must stay, disable anonymous access and allow only the people who need it."
+references = ["CWE-319: Cleartext Transmission of Sensitive Information"]
+
+  [rule.when]
+  tcp_any = [21]
+
+  [[rule.raise]]
+  public = true
+  to = "high"
+  note = "reachable on a public address"
+
+[[rule]]
+key = "mail_cleartext"
+title = "Mailbox access without encryption is offered"
+category = "cleartext"
+severity = "medium"
+confidence = "medium"
+why = "POP3 on port 110 and IMAP on port 143 start without encryption. Unless the server forces STARTTLS, passwords and mail can travel in plain text."
+fix = "Offer only the encrypted ports (POP3S 995, IMAPS 993), or require STARTTLS before login."
+references = ["CWE-319: Cleartext Transmission of Sensitive Information"]
+
+  [rule.when]
+  tcp_any = [110, 143]
+
+[[rule]]
+key = "snmp_open"
+title = "SNMP is open"
+category = "cleartext"
+severity = "medium"
+confidence = "medium"
+why = "SNMP versions 1 and 2c protect access with a 'community string' sent in plain text, and many devices still use the default 'public'. It can reveal the device's whole configuration, and write access can change it."
+fix = "Turn SNMP off if it is not used. Otherwise use SNMPv3 with authentication and encryption, and allow only the monitoring server."
+references = ["CWE-1188: Insecure Default Initialization of Resource"]
+
+  [rule.when]
+  udp_any = [161]
+
+  [[rule.raise]]
+  role_any = ["router"]
+  to = "high"
+  note = "network equipment exposes its routing and interface configuration this way"
+
+[[rule]]
+key = "tftp_open"
+title = "TFTP is open"
+category = "cleartext"
+severity = "medium"
+confidence = "medium"
+why = "TFTP has no login at all. Anyone who can reach it may be able to download or upload files, often device configurations or boot images."
+fix = "Turn TFTP off when it is not actively needed, and restrict it to the devices that use it."
+
+  [rule.when]
+  udp_any = [69]
+
+[[rule]]
+key = "management_over_http"
+title = "Device management page uses plain HTTP"
+category = "cleartext"
+severity = "medium"
+confidence = "medium"
+why = "The admin login page of this device is served without encryption, so the admin password can be read on the network."
+fix = "Switch the management interface to HTTPS only, change any default password, and limit which computers can reach it."
+references = ["CWE-319: Cleartext Transmission of Sensitive Information"]
+
+  [rule.when]
+  tcp_any = [80, 8080, 8000]
+  role_any = ["router", "management_controller", "hypervisor", "camera", "printer", "nas", "iot_device", "voip_device", "industrial_device"]
+
+# ======================================================================
+# Remote access
+# ======================================================================
+
+[[rule]]
+key = "rdp_open"
+title = "Remote Desktop (RDP) is open"
+category = "remote_access"
+severity = "medium"
+confidence = "medium"
+why = "RDP gives a full desktop login. It is one of the most common ways attackers get in, through stolen or guessed passwords and RDP vulnerabilities."
+fix = "Allow RDP only through a VPN or a gateway, turn on Network Level Authentication, and use strong passwords with account lockout."
+references = ["MITRE ATT&CK T1021.001: Remote Desktop Protocol"]
+
+  [rule.when]
+  tcp_any = [3389]
+
+  [[rule.raise]]
+  criticality = "high"
+  to = "high"
+  note = "this host is critical"
+
+  [[rule.raise]]
+  public = true
+  to = "critical"
+  note = "RDP on a public address is a leading cause of ransomware incidents"
+
+[[rule]]
+key = "vnc_open"
+title = "VNC remote control is open"
+category = "remote_access"
+severity = "high"
+confidence = "medium"
+why = "VNC gives full control of the screen. Many VNC servers use weak passwords, limit them to 8 characters, or have no password at all, and the traffic is often unencrypted."
+fix = "Turn VNC off, or reach it only through SSH or a VPN, with a strong password."
+references = ["MITRE ATT&CK T1021.005: VNC"]
+
+  [rule.when]
+  tcp_any = [5900, 5901, 5902, 5903]
+
+[[rule]]
+key = "winrm_http_open"
+title = "Windows Remote Management over HTTP is open"
+category = "remote_access"
+severity = "medium"
+confidence = "medium"
+why = "WinRM lets administrators run commands remotely. Port 5985 is the HTTP version, and attackers who have a password use it to move between Windows machines."
+fix = "Allow WinRM only from administrator machines, and prefer HTTPS (port 5986)."
+references = ["MITRE ATT&CK T1021.006: Windows Remote Management"]
+
+  [rule.when]
+  tcp_any = [5985]
+
+[[rule]]
+key = "smb_open"
+title = "Windows file sharing (SMB) is open"
+category = "remote_access"
+severity = "medium"
+confidence = "medium"
+why = "SMB on port 445 is used to spread ransomware and worms (WannaCry used it), and to move between machines once inside."
+fix = "Allow SMB only between the machines that need it, keep Windows updated, and make sure the old SMBv1 protocol is turned off."
+references = ["MITRE ATT&CK T1021.002: SMB/Windows Admin Shares"]
+
+  [rule.when]
+  tcp_any = [445]
+
+  [[rule.raise]]
+  public = true
+  to = "critical"
+  note = "SMB should never be reachable from the internet"
+
+[[rule]]
+key = "ssh_outdated"
+title = "SSH server reports a very old version"
+category = "outdated"
+severity = "medium"
+confidence = "low"
+why = "This OpenSSH version is from before 2016 and no longer receives updates from the OpenSSH project. Some Linux distributions keep patching old versions without changing the number, so check before acting."
+fix = "Update the operating system's SSH server, or confirm with the vendor that security fixes are applied."
+
+  [rule.when]
+  version_below = { product = "OpenSSH", below = "7.4" }
+
+# ======================================================================
+# Data exposure
+# ======================================================================
+
+[[rule]]
+key = "database_exposed"
+title = "Database is reachable over the network"
+category = "data_exposure"
+severity = "medium"
+confidence = "medium"
+why = "Databases hold the data attackers want. Anyone who can reach the port can try passwords or database vulnerabilities directly."
+fix = "Let only the application servers that need the database reach it (firewall or bind to a private interface), and use strong, unique credentials."
+references = ["CWE-284: Improper Access Control"]
+
+  [rule.when]
+  tcp_any = [1433, 1521, 3306, 5432, 9042, 26257, 7474, 8086]
+
+  [[rule.raise]]
+  public = true
+  to = "critical"
+  note = "reachable on a public address"
+
+[[rule]]
+key = "nfs_open"
+title = "NFS file sharing is open"
+category = "data_exposure"
+severity = "medium"
+confidence = "medium"
+why = "NFS often trusts clients by address only. A wrongly configured export can let any machine on the network read or change files."
+fix = "Export shares only to the specific machines that need them, and avoid 'no_root_squash'."
+
+  [rule.when]
+  tcp_any = [2049]
+
+[[rule]]
+key = "raw_printing_open"
+title = "Raw printing port is open"
+category = "device_hygiene"
+severity = "low"
+confidence = "medium"
+why = "Port 9100 accepts print jobs and printer commands from anyone, with no login. It can be used to waste paper, change printer settings, or read stored jobs on some models."
+fix = "Allow printing only from the print server or the office network, and set an admin password on the printer."
+
+  [rule.when]
+  tcp_any = [9100]
+
+# ======================================================================
+# Services that usually have no login by default
+# ======================================================================
+
+[[rule]]
+key = "docker_api_open"
+title = "Docker API is open without encryption"
+category = "no_auth"
+severity = "critical"
+confidence = "high"
+why = "The plain Docker API on port 2375 has no login. Anyone who reaches it can start containers with full control of the host machine."
+fix = "Turn off the TCP API, or use port 2376 with TLS client certificates. Never expose port 2375."
+references = ["CWE-306: Missing Authentication for Critical Function"]
+
+  [rule.when]
+  tcp_any = [2375]
+
+[[rule]]
+key = "etcd_open"
+title = "etcd key-value store is open"
+category = "no_auth"
+severity = "high"
+confidence = "medium"
+why = "etcd stores Kubernetes secrets and configuration. Without client certificates it can be read by anyone who reaches it."
+fix = "Require TLS client certificates and allow only the cluster's control plane to reach it."
+references = ["CWE-306: Missing Authentication for Critical Function"]
+
+  [rule.when]
+  tcp_any = [2379, 2380]
+
+[[rule]]
+key = "kubelet_open"
+title = "Kubernetes kubelet API is open"
+category = "no_auth"
+severity = "high"
+confidence = "medium"
+why = "If anonymous access is left on, the kubelet API lets anyone run commands inside containers on that node."
+fix = "Turn off anonymous kubelet access, require authorization, and allow only the control plane to reach port 10250."
+
+  [rule.when]
+  tcp_any = [10250, 10255]
+
+[[rule]]
+key = "redis_open"
+title = "Redis is reachable"
+category = "no_auth"
+severity = "high"
+confidence = "medium"
+why = "Redis often runs with no password. An open Redis can be read, wiped, or abused to write files and take over the server."
+fix = "Bind Redis to localhost or a private interface, turn on 'protected-mode' and a password (or ACLs)."
+references = ["CWE-306: Missing Authentication for Critical Function"]
+
+  [rule.when]
+  tcp_any = [6379]
+
+  [[rule.raise]]
+  public = true
+  to = "critical"
+  note = "reachable on a public address"
+
+[[rule]]
+key = "mongodb_open"
+title = "MongoDB is reachable"
+category = "no_auth"
+severity = "high"
+confidence = "medium"
+why = "Older or quickly set up MongoDB servers allow access without a login. Exposed MongoDB databases are regularly wiped and held for ransom."
+fix = "Turn on authentication, bind to a private interface, and allow only the application servers."
+references = ["CWE-306: Missing Authentication for Critical Function"]
+
+  [rule.when]
+  tcp_any = [27017, 27018]
+
+  [[rule.raise]]
+  public = true
+  to = "critical"
+  note = "reachable on a public address"
+
+[[rule]]
+key = "elasticsearch_open"
+title = "Elasticsearch is reachable"
+category = "no_auth"
+severity = "high"
+confidence = "medium"
+why = "Elasticsearch had no login by default before version 8. Exposed clusters are a frequent source of large data leaks."
+fix = "Turn on Elasticsearch security (authentication and TLS) and allow only the applications that use it."
+references = ["CWE-306: Missing Authentication for Critical Function"]
+
+  [rule.when]
+  tcp_any = [9200, 9300]
+
+[[rule]]
+key = "memcached_open"
+title = "Memcached is reachable"
+category = "no_auth"
+severity = "high"
+confidence = "high"
+why = "Memcached has no login, so its cached data can be read or changed. Over UDP it is also abused to amplify denial-of-service attacks."
+fix = "Bind memcached to localhost or a private interface and turn off UDP ('-U 0')."
+references = ["CVE-2018-1000115"]
+
+  [rule.when]
+  tcp_any = [11211]
+
+[[rule]]
+key = "couchdb_open"
+title = "CouchDB is reachable"
+category = "no_auth"
+severity = "medium"
+confidence = "medium"
+why = "Older CouchDB setups start in 'admin party' mode, where everyone is an administrator."
+fix = "Create an admin account, require authentication, and restrict who can reach port 5984."
+
+  [rule.when]
+  tcp_any = [5984]
+
+[[rule]]
+key = "mqtt_cleartext"
+title = "MQTT messaging without encryption is open"
+category = "no_auth"
+severity = "medium"
+confidence = "medium"
+why = "MQTT on port 1883 is unencrypted, and many brokers allow anonymous clients. Smart-home and sensor data can be read, and devices can be sent commands."
+fix = "Require usernames and passwords, turn off anonymous access, and use MQTT over TLS (port 8883)."
+
+  [rule.when]
+  tcp_any = [1883]
+
+[[rule]]
+key = "rtsp_camera_stream"
+title = "Camera video stream port is open"
+category = "device_hygiene"
+severity = "medium"
+confidence = "medium"
+why = "Many cameras serve video over RTSP with a default password or no password, so anyone on the network may be able to watch."
+fix = "Set a strong camera password, update the firmware, and keep cameras on their own network."
+
+  [rule.when]
+  tcp_any = [554, 8554]
+  role_any = ["camera"]
+
+[[rule]]
+key = "upnp_open"
+title = "UPnP device discovery is answering"
+category = "device_hygiene"
+severity = "low"
+confidence = "medium"
+why = "UPnP lets programs on the network open ports on the router automatically. Malware uses it to make devices reachable from the internet."
+fix = "Turn UPnP off on the router unless something really needs it."
+
+  [rule.when]
+  udp_any = [1900]
+
+  [[rule.raise]]
+  role_any = ["router"]
+  to = "medium"
+  note = "on a router, UPnP can open ports to the internet"
+
+# ======================================================================
+# Management of other systems
+# ======================================================================
+
+[[rule]]
+key = "bmc_exposed"
+title = "Server management controller is reachable"
+category = "management"
+severity = "high"
+confidence = "medium"
+why = "Controllers such as iLO, iDRAC and IPMI give full control of the server hardware, even when it is turned off. IPMI 2.0 also leaks password hashes to anyone who asks (CVE-2013-4786)."
+fix = "Put management controllers on a separate management network, change default passwords, and keep their firmware updated."
+references = ["CVE-2013-4786"]
+
+  [rule.when]
+  role_any = ["management_controller"]
+  tcp_any = [80, 443, 623, 664, 5900, 17988]
+
+[[rule]]
+key = "ipmi_open"
+title = "IPMI is answering"
+category = "management"
+severity = "high"
+confidence = "medium"
+why = "IPMI on UDP 623 gives remote control of server hardware, and IPMI 2.0 leaks password hashes to anyone who asks."
+fix = "Allow IPMI only on a separate management network, and turn it off where it is not used."
+references = ["CVE-2013-4786"]
+
+  [rule.when]
+  udp_any = [623]
+
+[[rule]]
+key = "hypervisor_management"
+title = "Virtualization management is reachable"
+category = "management"
+severity = "high"
+confidence = "medium"
+why = "Whoever controls the virtualization host controls every virtual machine on it."
+fix = "Reach hypervisor management only from a separate management network or a VPN, with strong passwords and multi-factor login."
+
+  [rule.when]
+  role_any = ["hypervisor"]
+  tcp_any = [443, 902, 8006, 5480]
+
+# ======================================================================
+# Outdated software (from service banners: confirm before acting)
+# ======================================================================
+
+[[rule]]
+key = "vsftpd_backdoor"
+title = "vsftpd 2.3.4 (backdoored release) reported"
+category = "outdated"
+severity = "critical"
+confidence = "medium"
+why = "One copy of vsftpd 2.3.4 that was distributed contained a backdoor giving a root shell (CVE-2011-2523). This banner matches that version."
+fix = "Replace this FTP server immediately with a current, verified package, then check the machine for signs of compromise."
+references = ["CVE-2011-2523"]
+
+  [rule.when]
+  version_is = { product = "vsftpd", versions = ["2.3.4"] }
+
+[[rule]]
+key = "apache_eol"
+title = "Apache web server reports an end-of-life version"
+category = "outdated"
+severity = "high"
+confidence = "low"
+why = "Apache httpd 2.2 and earlier stopped getting security fixes in 2017."
+fix = "Upgrade to a supported Apache 2.4 release, or confirm the vendor still patches this build."
+
+  [rule.when]
+  version_below = { product = "Apache httpd", below = "2.4" }
+
+[[rule]]
+key = "iis_eol"
+title = "Microsoft IIS reports an end-of-life version"
+category = "outdated"
+severity = "high"
+confidence = "low"
+why = "IIS 7.5 and earlier ship with Windows versions that no longer receive security updates."
+fix = "Move the site to a supported Windows Server release."
+
+  [rule.when]
+  version_below = { product = "Microsoft IIS", below = "8.0" }
+
+[[rule]]
+key = "samba_eol"
+title = "Samba reports an end-of-life version"
+category = "outdated"
+severity = "high"
+confidence = "low"
+why = "Samba 3.x no longer receives security fixes, and several 3.x releases are affected by SambaCry (CVE-2017-7494), which allows remote code execution."
+fix = "Upgrade to a supported Samba 4 release."
+references = ["CVE-2017-7494"]
+
+  [rule.when]
+  version_below = { product = "Samba", below = "4.0" }
+
+[[rule]]
+key = "windows_eol"
+title = "Operating system estimate is an end-of-life Windows"
+category = "outdated"
+severity = "high"
+confidence = "low"
+why = "The OS estimate suggests a Windows version that no longer receives security updates. OS estimates can be wrong, so confirm on the machine."
+fix = "Upgrade to a supported Windows version, or isolate the machine if it cannot be upgraded."
+
+  [rule.when]
+  os_any = ["Windows XP", "Windows Vista", "Windows 7", "Windows Server 2003", "Windows Server 2008", "Windows 2000"]
+
+[[rule]]
+key = "mysql_eol"
+title = "MySQL reports an end-of-life version"
+category = "outdated"
+severity = "high"
+confidence = "low"
+why = "MySQL 5.7 and earlier no longer receive security fixes from Oracle (5.7 support ended in October 2023)."
+fix = "Upgrade to a supported MySQL 8 release (or a supported MariaDB), or confirm the vendor still patches this build."
+
+  [rule.when]
+  version_below = { product = "MySQL", below = "8.0", unless = ["MariaDB"] }
+
+[[rule]]
+key = "postgresql_eol"
+title = "PostgreSQL reports an end-of-life version"
+category = "outdated"
+severity = "high"
+confidence = "low"
+why = "PostgreSQL 12 and earlier no longer receive security fixes (version 12 support ended in November 2024)."
+fix = "Upgrade to a supported PostgreSQL major version."
+
+  [rule.when]
+  version_below = { product = "PostgreSQL", below = "13" }

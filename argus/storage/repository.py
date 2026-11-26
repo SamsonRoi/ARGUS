@@ -515,3 +515,119 @@ def delete_scan(connection: sqlite3.Connection, scan_id: int) -> bool:
     with connection:
         cursor = connection.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
     return cursor.rowcount > 0
+
+
+# ---------- accepted risks ----------
+
+@dataclass
+class AcceptanceRecord:
+    id: int
+    fingerprint: str
+    rule: str
+    title: str
+    location: str
+    reason: str
+    accepted_by: str | None
+    expires_on: date | None
+    created_at: datetime
+    engagement_id: int | None
+
+    def active(self, today: date | None = None) -> bool:
+        today = today or date.today()
+        return self.expires_on is None or self.expires_on >= today
+
+
+def accept_risk(
+    connection: sqlite3.Connection,
+    finding,
+    reason: str,
+    *,
+    accepted_by: str | None = None,
+    expires_on: date | None = None,
+    engagement_id: int | None = None,
+) -> int:
+    """Record that a finding is a known, accepted risk. Returns the record id.
+
+    Accepting the same finding again replaces the earlier record.
+    """
+    reason = (reason or "").strip()
+
+    if not reason:
+        raise StorageError("Accepting a risk needs a reason.")
+
+    if expires_on is not None and expires_on < date.today():
+        raise StorageError("The expiry date is already in the past.")
+
+    with connection:
+        connection.execute(
+            "DELETE FROM risk_acceptances WHERE fingerprint = ?", (finding.fingerprint,)
+        )
+        cursor = connection.execute(
+            """
+            INSERT INTO risk_acceptances
+                (fingerprint, rule, title, location, reason, accepted_by,
+                 expires_on, created_at, engagement_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                finding.fingerprint,
+                finding.rule,
+                finding.title,
+                finding.where,
+                reason,
+                accepted_by,
+                expires_on.isoformat() if expires_on else None,
+                _now_text(),
+                engagement_id,
+            ),
+        )
+
+    return cursor.lastrowid
+
+
+def list_acceptances(connection: sqlite3.Connection) -> list[AcceptanceRecord]:
+    rows = connection.execute(
+        "SELECT * FROM risk_acceptances ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+
+    return [
+        AcceptanceRecord(
+            id=row["id"],
+            fingerprint=row["fingerprint"],
+            rule=row["rule"],
+            title=row["title"],
+            location=row["location"],
+            reason=row["reason"],
+            accepted_by=row["accepted_by"],
+            expires_on=date.fromisoformat(row["expires_on"]) if row["expires_on"] else None,
+            created_at=datetime.fromisoformat(row["created_at"]),
+            engagement_id=row["engagement_id"],
+        )
+        for row in rows
+    ]
+
+
+def revoke_acceptance(connection: sqlite3.Connection, acceptance_id: int) -> bool:
+    """Stop accepting a risk, so it counts again. Returns False if missing."""
+    with connection:
+        cursor = connection.execute(
+            "DELETE FROM risk_acceptances WHERE id = ?", (acceptance_id,)
+        )
+    return cursor.rowcount > 0
+
+
+def acceptances_by_fingerprint(connection: sqlite3.Connection) -> dict:
+    """Accepted risks keyed by finding fingerprint, for the risk engine."""
+    from argus.modules.risk import Acceptance
+
+    return {
+        record.fingerprint: Acceptance(
+            id=record.id,
+            fingerprint=record.fingerprint,
+            reason=record.reason,
+            accepted_by=record.accepted_by,
+            expires_on=record.expires_on,
+            created_on=record.created_at.date(),
+        )
+        for record in reversed(list_acceptances(connection))
+    }

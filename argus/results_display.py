@@ -486,3 +486,335 @@ def show_network_map(network_map, output: Console | None = None) -> None:
 
     out.print()
     out.print(Text(MAP_FOOTER, style="dim"))
+
+
+# ---------- risk analysis ----------
+
+BAND_STYLES = {
+    "critical": "bold white on red",
+    "high": "bold red",
+    "medium": "yellow",
+    "low": "cyan",
+    "info": "dim",
+}
+GRADE_STYLES = {
+    "A": "bold green", "B": "green", "C": "yellow", "D": "bold red", "F": "bold white on red",
+}
+RISK_DETAIL_LIMIT = 8
+
+RISK_FOOTER = (
+    "Findings describe exposure seen from this computer. They are not "
+    "confirmed vulnerabilities, and ARGUS did not try to exploit anything. "
+    "Version-based findings come from service banners, which can be wrong "
+    "or patched without a version change."
+)
+
+
+def _band_text(finding) -> Text:
+    return Text(f"{finding.score:.1f} {finding.band}", style=BAND_STYLES[finding.band])
+
+
+def _history_text(finding) -> Text:
+    text = Text()
+
+    if finding.new_since_baseline:
+        text.append("NEW since baseline", style="bold magenta")
+
+    if finding.streak and finding.streak > 1:
+        if text:
+            text.append("\n")
+        text.append(f"open for {finding.streak} scans", style="yellow")
+
+    if finding.first_seen_scan:
+        if text:
+            text.append("\n")
+        text.append(f"first seen in #{finding.first_seen_scan}", style="dim")
+    elif finding.seen_in_scans == 1 and finding.streak == 1 and not finding.new_since_baseline:
+        if text:
+            text.append("\n")
+        text.append("first seen now", style="dim")
+
+    return text if text else safe_text(None)
+
+
+def _bulleted(lines) -> Text:
+    text = Text()
+
+    for index, line in enumerate(lines):
+        if index:
+            text.append("\n")
+        text.append("- ")
+        text.append_text(safe_text(line))
+
+    return text
+
+
+def show_risk_report(report, detail_limit: int | None = RISK_DETAIL_LIMIT,
+                     output: Console | None = None) -> None:
+    """Print a RiskReport: posture, fix-first plan, findings, paths and history."""
+    from argus.modules.risk import CATEGORY_LABELS
+
+    out = output or console
+
+    out.print()
+    out.print(Rule("RISK ANALYSIS", style="cyan"))
+
+    # ----- posture -----
+    posture = Table.grid(padding=(0, 2))
+    posture.add_column(style="bold cyan")
+    posture.add_column()
+    grade = Text(f" {report.grade} ", style=GRADE_STYLES.get(report.grade, "bold"))
+    grade.append(f"  {report.grade_reason}", style="")
+    posture.add_row("Risk grade", grade)
+
+    counts = Text()
+
+    for band in ("critical", "high", "medium", "low", "info"):
+        number = report.count(band)
+
+        if number:
+            if counts:
+                counts.append("   ")
+            counts.append(f"{number} {band}", style=BAND_STYLES[band])
+
+    posture.add_row("Open findings", counts if counts else Text("none", style="green"))
+    posture.add_row("Total risk", Text(f"{report.total_risk:.1f} points"))
+    posture.add_row("Hosts with findings", Text(str(len(report.host_scores))))
+
+    if report.accepted:
+        posture.add_row("Accepted risks", Text(str(len(report.accepted))))
+
+    if report.compared_with:
+        moved = Text(f"vs scan #{report.compared_with}: ")
+        new = sum(1 for finding in report.findings if finding.first_seen_scan is None
+                  and finding.seen_in_scans == 1)
+        moved.append(f"{new} new", style="magenta" if new else "")
+        moved.append(", ")
+        moved.append(f"{len(report.resolved)} resolved", style="green" if report.resolved else "")
+        moved.append(f", {len(report.not_rechecked)} not re-checked", style="dim")
+        posture.add_row("Since last scan", moved)
+
+    posture.add_row("Rules", Text(f"version {report.rules_version}", style="dim"))
+    out.print(posture)
+
+    if not report.findings:
+        out.print("\n[green]No open risk findings in what this scan could see.[/green]")
+    else:
+        # ----- fix-first plan -----
+        plan = Table(title="Fix these first", title_justify="left")
+        plan.add_column("#", justify="right", style="bold")
+        plan.add_column("Fix")
+        plan.add_column("Findings", justify="right")
+        plan.add_column("Where")
+        plan.add_column("Risk removed", justify="right")
+
+        for number, action in enumerate(report.plan[:5], start=1):
+            where = ", ".join(action.hosts[:4])
+
+            if len(action.hosts) > 4:
+                where += f" and {len(action.hosts) - 4} more"
+
+            plan.add_row(
+                str(number),
+                safe_text(action.title, style=BAND_STYLES[action.worst]),
+                str(action.findings),
+                safe_text(where),
+                f"{action.risk_removed:.1f}",
+            )
+
+        out.print()
+        out.print(plan)
+
+        if len(report.plan) > 5:
+            out.print(f"[dim]{len(report.plan) - 5} more fix(es) are listed with the findings below.[/dim]")
+
+        # ----- all findings -----
+        table = Table(title="Findings (highest priority first)", title_justify="left")
+        table.add_column("#", justify="right", style="bold")
+        table.add_column("Priority", no_wrap=True)
+        table.add_column("Finding")
+        table.add_column("Where")
+        table.add_column("History")
+
+        for number, finding in enumerate(report.findings, start=1):
+            title = safe_text(finding.title)
+            title.append(f"\n{CATEGORY_LABELS.get(finding.category, finding.category)}", style="dim")
+            table.add_row(
+                str(number),
+                _band_text(finding),
+                title,
+                safe_text(finding.where),
+                _history_text(finding),
+            )
+
+        out.print()
+        out.print(table)
+
+        # ----- details -----
+        shown = report.findings if detail_limit is None else report.findings[:detail_limit]
+
+        for number, finding in enumerate(shown, start=1):
+            body = Table.grid(padding=(0, 2))
+            body.add_column(style="bold cyan", no_wrap=True)
+            body.add_column()
+            body.add_row("Where", safe_text(finding.host_label or finding.where))
+            body.add_row("Evidence", _bulleted(finding.evidence))
+            body.add_row("Why it matters", safe_text(finding.why))
+
+            if finding.escalations:
+                body.add_row("Raised because", _bulleted(finding.escalations))
+
+            body.add_row("Score", safe_text(
+                f"{finding.score:.1f} = " + " ".join(finding.score_factors)
+            ))
+            body.add_row("Confidence", safe_text(finding.confidence))
+            body.add_row("How to fix", safe_text(finding.fix))
+
+            if finding.references:
+                body.add_row("References", safe_text("; ".join(finding.references)))
+
+            out.print()
+            out.print(Panel(
+                body,
+                title=Text(f"#{number}  {finding.title}", style=BAND_STYLES[finding.band]),
+                title_align="left",
+                border_style=BAND_STYLES[finding.band].replace("white on ", "").replace("bold ", ""),
+            ))
+
+        hidden = len(report.findings) - len(shown)
+
+        if hidden > 0:
+            out.print(
+                f"\n[dim]Details for {hidden} more finding(s) are hidden. "
+                "Choose 'Show every finding in detail' to see them.[/dim]"
+            )
+
+    # ----- attack paths -----
+    if report.attack_paths:
+        paths = Table(title="Possible attack paths", title_justify="left")
+        paths.add_column("Starting point (weak)")
+        paths.add_column("Why it is weak")
+        paths.add_column("Could reach (critical)")
+        paths.add_column("Basis")
+
+        for path in report.attack_paths:
+            paths.add_row(
+                safe_text(path.entry_label),
+                _bulleted(path.entry_reasons),
+                safe_text(path.target_label, style="bold"),
+                safe_text(path.basis, style="dim"),
+            )
+
+        out.print()
+        out.print(paths)
+        out.print(
+            "[dim]Possible, not proven: ARGUS cannot see firewalls between "
+            "hosts on the same subnet.[/dim]"
+        )
+
+    # ----- hosts -----
+    if report.host_scores:
+        hosts = Table(title="Highest-risk hosts", title_justify="left")
+        hosts.add_column("Host", style="bold")
+        hosts.add_column("Risk", justify="right")
+        hosts.add_column("Findings", justify="right")
+
+        for ip, score in list(report.host_scores.items())[:10]:
+            count = sum(1 for finding in report.findings if finding.host_ip == ip)
+            hosts.add_row(safe_text(ip), Text(f"{score:.1f}", style=BAND_STYLES[_score_band(score)]), str(count))
+
+        out.print()
+        out.print(hosts)
+
+    # ----- what changed since the last scan -----
+    if report.resolved:
+        resolved = Table(title=f"Resolved since scan #{report.compared_with}", title_justify="left")
+        resolved.add_column("Finding", style="green")
+        resolved.add_column("Where")
+
+        for finding in report.resolved:
+            resolved.add_row(safe_text(finding.title), safe_text(finding.where))
+
+        out.print()
+        out.print(resolved)
+        out.print("[dim]Resolved means this scan checked again and the problem was gone.[/dim]")
+
+    if report.not_rechecked:
+        unknown = Table(title="Not re-checked by this scan", title_justify="left")
+        unknown.add_column("Finding", style="dim")
+        unknown.add_column("Where", style="dim")
+
+        for finding in report.not_rechecked:
+            unknown.add_row(safe_text(finding.title), safe_text(finding.where))
+
+        out.print()
+        out.print(unknown)
+        out.print(
+            "[dim]These were open before, but this scan did not look at the same "
+            "ports or host, so ARGUS cannot say whether they are fixed.[/dim]"
+        )
+
+    # ----- accepted -----
+    if report.accepted:
+        accepted = Table(title="Accepted risks (not counted in the grade)", title_justify="left")
+        accepted.add_column("Finding")
+        accepted.add_column("Where")
+        accepted.add_column("Reason")
+        accepted.add_column("Until")
+
+        for finding in report.accepted:
+            acceptance = finding.acceptance
+            accepted.add_row(
+                safe_text(finding.title),
+                safe_text(finding.where),
+                safe_text(acceptance.reason),
+                safe_text(acceptance.expires_on.isoformat() if acceptance.expires_on else "no expiry"),
+            )
+
+        out.print()
+        out.print(accepted)
+
+    if report.notes:
+        out.print()
+        out.print(Panel(_bulleted(report.notes), title="What this analysis could not see",
+                        border_style="yellow"))
+
+    out.print()
+    out.print(Text(RISK_FOOTER, style="dim"))
+
+
+def _score_band(score: float) -> str:
+    from argus.modules.risk import score_band
+
+    return score_band(score)
+
+
+def show_risk_changes(changes, output: Console | None = None) -> None:
+    """Print new, resolved and not re-checked findings between two scans."""
+    out = output or console
+
+    out.print()
+    out.print(Rule("RISK CHANGES", style="cyan"))
+
+    if not (changes.new or changes.resolved or changes.not_rechecked):
+        out.print("[green]No change in risk findings between these scans.[/green]")
+        return
+
+    table = Table(title_justify="left")
+    table.add_column("Change")
+    table.add_column("Finding")
+    table.add_column("Where")
+
+    for label, style, items in (
+        ("New", "magenta", changes.new),
+        ("Resolved", "green", changes.resolved),
+        ("Not re-checked", "dim", changes.not_rechecked),
+    ):
+        for finding in items:
+            table.add_row(Text(label, style=style), safe_text(finding.title), safe_text(finding.where))
+
+    out.print(table)
+    out.print(
+        "[dim]Resolved only when the newer scan checked again. "
+        "Not re-checked means unknown, not fixed.[/dim]"
+    )
